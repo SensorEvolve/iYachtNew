@@ -2,7 +2,6 @@ import { Asset } from "expo-asset";
 import * as FileSystem from "expo-file-system";
 import { Yacht } from "../Types/yacht";
 
-// Define CSV column indexes
 const CSV_COLUMNS = {
   NAME: 0,
   BUILT_BY: 1,
@@ -26,7 +25,6 @@ const CSV_COLUMNS = {
   IMAGE_NAME: 19,
 };
 
-// Helper functions for formatting
 export const formatLength = (length: string): string => {
   const meters = parseFloat(length);
   if (isNaN(meters)) return length;
@@ -48,30 +46,34 @@ export const formatPrice = (price: string | undefined): string => {
 
 export const loadYachtData = async (): Promise<Yacht[]> => {
   try {
-    // Get the CSV file path
-    const csvModule = require("../assets/super_yachts.csv");
+    // Get the CSV file directly from src
+    const csvModule = require("./super_yachts.csv");
+    const csvContent = await FileSystem.readAsStringAsync(csvModule);
 
-    // Download the file from the asset
-    const asset = Asset.fromModule(csvModule);
-    await asset.downloadAsync();
-
-    if (!asset.localUri) {
-      throw new Error("Failed to load CSV file");
-    }
-
-    // Read the file content
-    const csvContent = await FileSystem.readAsStringAsync(asset.localUri);
-
-    // Split the content into lines and remove empty lines
-    const lines = csvContent
+    // Convert the content format
+    const formattedContent = csvContent
+      .replace(/\*\*/g, "") // Remove asterisks
       .split("\n")
-      .filter((line) => line.trim().length > 0);
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .join("\n");
 
-    // Skip header row and parse data
+    // Split into lines and filter out empty ones and header
+    const lines = formattedContent
+      .split("\n")
+      .filter((line) => line.trim().length > 0 && !line.includes("Name"));
+
+    console.log(`Processing ${lines.length} lines`);
+
+    // Parse data
     const yachts: Yacht[] = lines
-      .slice(1)
       .map((line, index) => {
-        const values = line.split(";");
+        const values = line.split(";").map((v) => v.trim());
+
+        if (values.length < Object.keys(CSV_COLUMNS).length) {
+          console.warn(`Skipping line ${index + 1}: insufficient values`);
+          return null;
+        }
 
         return {
           id: index.toString(),
@@ -99,9 +101,20 @@ export const loadYachtData = async (): Promise<Yacht[]> => {
             `${values[CSV_COLUMNS.NAME].toLowerCase().replace(/\s+/g, "_")}.png`,
         };
       })
-      .filter((yacht) => yacht.name && yacht.name.length > 0);
+      .filter(
+        (yacht): yacht is Yacht =>
+          yacht !== null && yacht.name && yacht.name.length > 0,
+      );
 
-    console.log(`Loaded ${yachts.length} yachts from CSV`);
+    console.log(`Successfully loaded ${yachts.length} yachts`);
+    if (yachts.length > 0) {
+      console.log("First yacht:", {
+        name: yachts[0].name,
+        builder: yachts[0].builtBy,
+        length: yachts[0].length,
+      });
+    }
+
     return yachts;
   } catch (error) {
     console.error("Error loading yacht data:", error);
