@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   FlatList,
   TouchableOpacity,
   Image,
+  ActivityIndicator,
 } from "react-native";
 import type { Yacht } from "../Types/yacht";
 import { getMainImage } from "../utils/imageUtils";
@@ -16,6 +17,10 @@ interface YachtListProps {
 }
 
 const YachtList: React.FC<YachtListProps> = ({ yachts, onYachtPress }) => {
+  const [loadingImages, setLoadingImages] = useState<{
+    [key: string]: boolean;
+  }>({});
+
   const renderYacht = ({ item }: { item: Yacht }) => {
     const imageSource = getMainImage(item.imageName);
 
@@ -24,11 +29,26 @@ const YachtList: React.FC<YachtListProps> = ({ yachts, onYachtPress }) => {
         style={styles.yachtContainer}
         onPress={() => onYachtPress(item)}
       >
-        <Image
-          source={imageSource}
-          style={styles.yachtImage}
-          resizeMode="cover"
-        />
+        <View style={styles.imageContainer}>
+          {loadingImages[item.id] && (
+            <ActivityIndicator
+              style={styles.loadingIndicator}
+              size="large"
+              color="#999"
+            />
+          )}
+          <Image
+            source={imageSource}
+            style={styles.yachtImage}
+            resizeMode="contain"
+            onLoadStart={() =>
+              setLoadingImages((prev) => ({ ...prev, [item.id]: true }))
+            }
+            onLoadEnd={() =>
+              setLoadingImages((prev) => ({ ...prev, [item.id]: false }))
+            }
+          />
+        </View>
         <View style={styles.infoContainer}>
           <Text style={styles.name}>{item.name}</Text>
           <Text style={styles.details}>
@@ -66,12 +86,22 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    overflow: "hidden",
+  },
+  imageContainer: {
+    width: "100%",
+    height: 200,
+    backgroundColor: "#f5f5f5",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingIndicator: {
+    position: "absolute",
+    zIndex: 1,
   },
   yachtImage: {
     width: "100%",
-    height: 200,
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
+    height: "100%",
   },
   infoContainer: {
     padding: 15,

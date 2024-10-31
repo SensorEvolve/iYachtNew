@@ -170,7 +170,91 @@ const FilterModal: React.FC<FilterModalProps> = ({
 };
 
 const styles = StyleSheet.create({
-  // ... (same styles as before)
+  modalContainer: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
+    maxHeight: "80%",
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "600",
+  },
+  resetText: {
+    color: "#007AFF",
+    fontSize: 16,
+  },
+  filterSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "500",
+    marginBottom: 12,
+  },
+  rangeInputs: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  input: {
+    flex: 1,
+    height: 40,
+    borderWidth: 1,
+    borderColor: "#E5E5E5",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+  },
+  fullInput: {
+    height: 40,
+    borderWidth: 1,
+    borderColor: "#E5E5E5",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+  },
+  rangeSeparator: {
+    marginHorizontal: 12,
+    color: "#666",
+  },
+  buttons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+    marginTop: 20,
+  },
+  button: {
+    flex: 1,
+    height: 48,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  cancelButton: {
+    backgroundColor: "#F5F5F5",
+  },
+  applyButton: {
+    backgroundColor: "#007AFF",
+  },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: "500",
+  },
+  applyButtonText: {
+    color: "white",
+  },
 });
-
 export default FilterModal;
