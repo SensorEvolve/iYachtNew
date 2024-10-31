@@ -1,33 +1,58 @@
-// src/utils/imageUtils.ts
+const requireYachtImages = () => {
+  const context = require.context("../assets/yachts", false, /\.(png|jpg)$/);
+  const images: YachtImageMap = {};
 
-/**
- * Gets the image for a yacht based on its imageName
- * Handles the case where image might not exist
- */
-export const getYachtImage = (imageName: string | undefined) => {
-  if (!imageName) return null;
+  context.keys().forEach((key) => {
+    const imageName = key
+      .replace(/\.\//, "")
+      .replace(/\.(png|jpg)$/, "")
+      .toLowerCase()
+      .replace(/\s+/g, "_");
+    images[imageName] = context(key);
+  });
 
-  try {
-    // Convert to lowercase and ensure proper format
-    const normalizedName = imageName.toLowerCase().trim();
-    // Dynamic require for the image
-    return require(`../assets/yachts/${normalizedName}.png`);
-  } catch (error) {
-    console.warn(`Image not found for yacht: ${imageName}`);
-    return null;
-  }
+  return images;
 };
 
-/**
- * Checks if an image exists for the given yacht name
- */
-export const hasYachtImage = (imageName: string | undefined): boolean => {
-  if (!imageName) return false;
+const yachtImages = requireYachtImages();
+const PLACEHOLDER = require("../assets/yachts/placeholder.png");
 
-  try {
-    require(`../assets/yachts/${imageName.toLowerCase().trim()}.png`);
-    return true;
-  } catch {
-    return false;
-  }
+export const getMainImage = (imageName: string): string => {
+  if (!imageName) return PLACEHOLDER;
+
+  const cleanImageName = imageName.toLowerCase();
+  return yachtImages[cleanImageName] || PLACEHOLDER;
 };
+
+export const getDetailImages = (imageName: string): string[] => {
+  if (!imageName) return [PLACEHOLDER];
+
+  const cleanImageName = imageName.toLowerCase();
+  const detailImages: string[] = [];
+
+  // Look for numbered variants
+  let index = 1;
+  while (true) {
+    const detailImageName = `${cleanImageName}_${index}`;
+    if (yachtImages[detailImageName]) {
+      detailImages.push(yachtImages[detailImageName]);
+      index++;
+    } else {
+      break;
+    }
+  }
+
+  // If no detail images found, use the main image
+  if (detailImages.length === 0) {
+    const mainImage = getMainImage(cleanImageName);
+    return [mainImage];
+  }
+
+  return detailImages;
+};
+
+interface YachtImageMap {
+  [key: string]: string;
+}
+
+export type { YachtImageMap };

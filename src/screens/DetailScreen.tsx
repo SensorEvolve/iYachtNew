@@ -12,26 +12,7 @@ import {
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../App";
-
-// Static image mapping
-const yachtImageMap = {
-  rev_ocean: {
-    main: require("../assets/yachts/rev_ocean.png"),
-    gallery: [
-      require("../assets/yachts/rev_ocean_1.png"),
-      require("../assets/yachts/rev_ocean_2.png"),
-      require("../assets/yachts/rev_ocean_3.png"),
-    ],
-  },
-  azzam: {
-    main: require("../assets/yachts/azzam.png"),
-    gallery: [],
-  },
-  Fulk_Al_Salamah: {
-    main: require("../assets/yachts/Fulk_Al_Salamah.png"),
-    gallery: [],
-  },
-};
+import { getMainImage, getDetailImages } from "../utils/imageUtils";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Detail">;
 
@@ -41,16 +22,10 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
 
-  // Get yacht images or default
-  const yachtImages = yachtImageMap[
-    yacht.imageName as keyof typeof yachtImageMap
-  ] || {
-    main: require("../assets/yachts/azzam.png"), // fallback image
-    gallery: [],
-  };
-
-  // Combine main image with gallery images
-  const allImages = [yachtImages.main, ...yachtImages.gallery];
+  // Get both main image and any additional detail images
+  const mainImage = getMainImage(yacht.imageName);
+  const detailImages = getDetailImages(yacht.imageName);
+  const images = detailImages.length > 0 ? detailImages : [mainImage];
 
   const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const slideSize = event.nativeEvent.layoutMeasurement.width;
@@ -59,46 +34,41 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
     setActiveIndex(roundIndex);
   };
 
-  const renderPaginationDots = () => {
-    return (
-      <View style={styles.paginationDots}>
-        {allImages.map((_, index) => (
-          <View
-            key={index}
-            style={[
-              styles.dot,
-              { backgroundColor: index === activeIndex ? "#000" : "#ccc" },
-            ]}
-          />
-        ))}
-      </View>
-    );
-  };
+  const renderImage = ({ item }: { item: any }) => (
+    <Image
+      source={item}
+      style={[styles.image, { width: windowWidth, height: windowWidth * 0.75 }]}
+      resizeMode="cover"
+    />
+  );
 
   return (
     <ScrollView style={styles.container}>
-      {/* Image Gallery Section */}
+      {/* Image Section */}
       <View>
         <FlatList
           ref={flatListRef}
-          data={allImages}
+          data={images}
+          renderItem={renderImage}
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
           onScroll={onScroll}
-          renderItem={({ item }) => (
-            <Image
-              source={item}
-              style={[
-                styles.image,
-                { width: windowWidth, height: windowWidth * 0.75 },
-              ]}
-              resizeMode="cover"
-            />
-          )}
-          keyExtractor={(_, index) => index.toString()}
+          scrollEventThrottle={16}
         />
-        {allImages.length > 1 && renderPaginationDots()}
+        {images.length > 1 && (
+          <View style={styles.pagination}>
+            {images.map((_, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.paginationDot,
+                  index === activeIndex && styles.paginationDotActive,
+                ]}
+              />
+            ))}
+          </View>
+        )}
       </View>
 
       {/* Header Section */}
@@ -211,7 +181,6 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
     </ScrollView>
   );
 };
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -219,20 +188,6 @@ const styles = StyleSheet.create({
   },
   image: {
     backgroundColor: "#f5f5f5",
-  },
-  paginationDots: {
-    flexDirection: "row",
-    position: "absolute",
-    bottom: 10,
-    alignSelf: "center",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginHorizontal: 4,
   },
   headerSection: {
     paddingHorizontal: 15,
@@ -295,6 +250,22 @@ const styles = StyleSheet.create({
   seizedValue: {
     color: "#666666",
     fontStyle: "italic",
+  },
+  pagination: {
+    flexDirection: "row",
+    position: "absolute",
+    bottom: 15,
+    alignSelf: "center",
+  },
+  paginationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "rgba(255, 255, 255, 0.5)",
+    marginHorizontal: 4,
+  },
+  paginationDotActive: {
+    backgroundColor: "#FFFFFF",
   },
 });
 
