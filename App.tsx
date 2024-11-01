@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { NavigationContainer } from "@react-navigation/native";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import {
+  createNativeStackNavigator,
+  NativeStackNavigationOptions,
+} from "@react-navigation/native-stack";
 import HomeScreen from "./src/screens/HomeScreen";
 import DetailScreen from "./src/screens/DetailScreen";
 import SearchScreen from "./src/screens/SearchScreen";
@@ -14,6 +17,22 @@ export type RootStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+// Define styles as a NativeStackNavigationOptions type
+const screenOptions: NativeStackNavigationOptions = {
+  headerShadowVisible: false,
+  headerBackTitleVisible: false,
+  headerStyle: {
+    backgroundColor: "#fff",
+  },
+  headerTitleStyle: {
+    fontSize: 28,
+    fontWeight: "600",
+    color: "#2B2B2B",
+    // letterSpacing needs to be a number
+    letterSpacing: 0.5,
+  },
+};
 
 export default function App() {
   const [yachts, setYachts] = useState<Yacht[]>([]);
@@ -31,23 +50,22 @@ export default function App() {
         setIsLoading(false);
       }
     };
-
     loadYachts();
   }, []);
 
   return (
     <NavigationContainer>
-      <Stack.Navigator
-        initialRouteName="Home"
-        screenOptions={{
-          headerShadowVisible: false,
-          headerBackTitleVisible: false,
-        }}
-      >
+      <Stack.Navigator initialRouteName="Home" screenOptions={screenOptions}>
         <Stack.Screen
           name="Home"
           options={{
-            title: "Super Yachts",
+            title: "SUPER YACHTS",
+            headerTitleStyle: {
+              fontSize: 28,
+              fontWeight: "700",
+              color: "#2B2B2B",
+              letterSpacing: 0.5, // Make sure it's a number
+            },
           }}
         >
           {(props) => (

@@ -3,11 +3,22 @@ const { getDefaultConfig } = require("expo/metro-config");
 module.exports = (() => {
   const config = getDefaultConfig(__dirname);
 
-  // Add CSV files to the asset patterns
-  config.resolver.assetExts.push("csv");
+  // Modify resolver for SVG support
+  const { assetExts, sourceExts } = config.resolver;
+  config.transformer = {
+    ...config.transformer,
+    babelTransformerPath: require.resolve("react-native-svg-transformer"),
+    assetPlugins: [
+      ...config.transformer.assetPlugins,
+      "expo-asset/tools/hashAssetFiles",
+    ],
+  };
 
-  // Handle CSV files as assets
-  config.transformer.assetPlugins.push("expo-asset/tools/hashAssetFiles");
+  config.resolver = {
+    ...config.resolver,
+    assetExts: assetExts.filter((ext) => ext !== "svg").concat(["csv"]),
+    sourceExts: [...sourceExts, "svg"],
+  };
 
   return config;
 })();
