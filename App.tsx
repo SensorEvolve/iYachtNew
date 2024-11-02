@@ -9,6 +9,7 @@ import DetailScreen from "./src/screens/DetailScreen";
 import SearchScreen from "./src/screens/SearchScreen";
 import { Yacht } from "./src/Types/yacht";
 import { loadYachtData } from "./src/utils/dataParser";
+import { FavoritesProvider } from "./src/contexts/FavoritesContext";
 
 export type RootStackParamList = {
   Home: undefined;
@@ -18,7 +19,6 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-// Define styles as a NativeStackNavigationOptions type
 const screenOptions: NativeStackNavigationOptions = {
   headerShadowVisible: false,
   headerBackTitleVisible: false,
@@ -29,10 +29,55 @@ const screenOptions: NativeStackNavigationOptions = {
     fontSize: 28,
     fontWeight: "600",
     color: "#2B2B2B",
-    // letterSpacing needs to be a number
     letterSpacing: 0.5,
   },
 };
+
+function AppNavigator({
+  yachts,
+  isLoading,
+}: {
+  yachts: Yacht[];
+  isLoading: boolean;
+}) {
+  return (
+    <Stack.Navigator initialRouteName="Home" screenOptions={screenOptions}>
+      <Stack.Screen
+        name="Home"
+        options={{
+          title: "SUPER YACHTS",
+          headerTitleStyle: {
+            fontSize: 28,
+            fontWeight: "700",
+            color: "#2B2B2B",
+            letterSpacing: 0.5,
+          },
+        }}
+      >
+        {(props) => (
+          <HomeScreen {...props} yachts={yachts} isLoading={isLoading} />
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen
+        name="Search"
+        options={{
+          title: "Search",
+        }}
+      >
+        {(props) => <SearchScreen {...props} />}
+      </Stack.Screen>
+
+      <Stack.Screen
+        name="Detail"
+        component={DetailScreen}
+        options={({ route }) => ({
+          title: route.params.yacht.name,
+        })}
+      />
+    </Stack.Navigator>
+  );
+}
 
 export default function App() {
   const [yachts, setYachts] = useState<Yacht[]>([]);
@@ -54,42 +99,10 @@ export default function App() {
   }, []);
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator initialRouteName="Home" screenOptions={screenOptions}>
-        <Stack.Screen
-          name="Home"
-          options={{
-            title: "SUPER YACHTS",
-            headerTitleStyle: {
-              fontSize: 28,
-              fontWeight: "700",
-              color: "#2B2B2B",
-              letterSpacing: 0.5, // Make sure it's a number
-            },
-          }}
-        >
-          {(props) => (
-            <HomeScreen {...props} yachts={yachts} isLoading={isLoading} />
-          )}
-        </Stack.Screen>
-
-        <Stack.Screen
-          name="Search"
-          options={{
-            title: "Search",
-          }}
-        >
-          {(props) => <SearchScreen {...props} />}
-        </Stack.Screen>
-
-        <Stack.Screen
-          name="Detail"
-          component={DetailScreen}
-          options={({ route }) => ({
-            title: route.params.yacht.name,
-          })}
-        />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <FavoritesProvider>
+      <NavigationContainer>
+        <AppNavigator yachts={yachts} isLoading={isLoading} />
+      </NavigationContainer>
+    </FavoritesProvider>
   );
 }

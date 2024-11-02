@@ -41,6 +41,7 @@ export const loadYachtData = async (): Promise<Yacht[]> => {
         imageName:
           values[CSV_COLUMNS.IMAGE_NAME] ||
           values[CSV_COLUMNS.NAME].toLowerCase().replace(/\s+/g, "_"),
+        isFavorite: false, // Add default favorite state
       };
     });
 

@@ -9,8 +9,10 @@ import {
   FlatList,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  TouchableOpacity,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { Ionicons } from "@expo/vector-icons";
 import type { RootStackParamList } from "../../App";
 import { getMainImage, getDetailImages } from "../utils/imageUtils";
 
@@ -20,6 +22,7 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
   const { yacht } = route.params;
   const windowWidth = Dimensions.get("window").width;
   const [activeIndex, setActiveIndex] = useState(0);
+  const [isFavorite, setIsFavorite] = useState(yacht.isFavorite || false);
   const flatListRef = useRef<FlatList>(null);
 
   // Get both main image and any additional detail images
@@ -32,6 +35,11 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
     const index = event.nativeEvent.contentOffset.x / slideSize;
     const roundIndex = Math.round(index);
     setActiveIndex(roundIndex);
+  };
+
+  const toggleFavorite = () => {
+    setIsFavorite(!isFavorite);
+    // Here you would typically update the yacht's favorite status in your global state/storage
   };
 
   const renderImage = ({ item }: { item: any }) => (
@@ -73,7 +81,19 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
 
       {/* Header Section */}
       <View style={styles.headerSection}>
-        <Text style={styles.yachtName}>{yacht.name}</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.yachtName}>{yacht.name}</Text>
+          <TouchableOpacity
+            onPress={toggleFavorite}
+            style={styles.favoriteButton}
+          >
+            <Ionicons
+              name={isFavorite ? "heart" : "heart-outline"}
+              size={30}
+              color={isFavorite ? "#000" : "#666"}
+            />
+          </TouchableOpacity>
+        </View>
         <View style={styles.headerDetails}>
           <Text style={styles.headerText}>Built by {yacht.builtBy}</Text>
           <Text style={styles.headerText}>{yacht.length}m</Text>
@@ -97,6 +117,7 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
         </View>
       </View>
 
+      {/* Rest of the existing sections remain unchanged */}
       {/* Capacity Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Capacity</Text>
@@ -181,6 +202,7 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
     </ScrollView>
   );
 };
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -195,11 +217,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5,
     borderBottomColor: "#E5E5E5",
   },
+  titleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
   yachtName: {
     fontSize: 32,
     fontWeight: "700",
     color: "#000000",
-    marginBottom: 8,
+    flex: 1,
+  },
+  favoriteButton: {
+    padding: 8,
   },
   headerDetails: {
     flexDirection: "row",

@@ -10,12 +10,16 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^14.0.4",
-    "@react-native-async-storage/async-storage": "1.23.1",
+    "@react-native-async-storage/async-storage": "^1.23.1",
     "@react-native-picker/picker": "2.7.5",
     "@react-navigation/native": "^6.1.18",
     "@react-navigation/native-stack": "^6.11.0",
+    "@types/node": "^22.8.6",
+    "csv-parse": "^5.5.6",
     "expo": "~51.0.28",
+    "expo-asset": "^10.0.10",
     "expo-blur": "~13.0.2",
+    "expo-file-system": "^17.0.1",
     "expo-status-bar": "~1.12.1",
     "react": "18.2.0",
     "react-native": "0.74.5",
@@ -29,7 +33,8 @@
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
-    "@types/react": "~18.2.45"
+    "@types/react": "~18.2.45",
+    "tsx": "^4.19.2"
   },
   "private": true
 }

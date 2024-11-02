@@ -28,6 +28,7 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
     bySpeed: false,
     byPrice: false,
     bySeized: false,
+    byFavorites: false,
   });
 
   const handleYachtPress = (yacht: Yacht) => {
@@ -73,43 +74,66 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
       );
     }
 
+    if (filters.byFavorites) {
+      filtered = filtered.filter((yacht) => yacht.isFavorite);
+    }
+
     return filtered;
   };
 
   // Filter toggle handlers
   const toggleLengthFilter = () => {
     setFilters((prev) => ({
+      ...prev,
       byLength: !prev.byLength,
       bySpeed: false,
       byPrice: false,
       bySeized: false,
+      byFavorites: false,
     }));
   };
 
   const toggleSpeedFilter = () => {
     setFilters((prev) => ({
+      ...prev,
       byLength: false,
       bySpeed: !prev.bySpeed,
       byPrice: false,
       bySeized: false,
+      byFavorites: false,
     }));
   };
 
   const togglePriceFilter = () => {
     setFilters((prev) => ({
+      ...prev,
       byLength: false,
       bySpeed: false,
       byPrice: !prev.byPrice,
       bySeized: false,
+      byFavorites: false,
     }));
   };
 
   const toggleSeizedFilter = () => {
     setFilters((prev) => ({
+      ...prev,
       byLength: false,
       bySpeed: false,
       byPrice: false,
       bySeized: !prev.bySeized,
+      byFavorites: false,
+    }));
+  };
+
+  const toggleFavoritesFilter = () => {
+    setFilters((prev) => ({
+      ...prev,
+      byLength: false,
+      bySpeed: false,
+      byPrice: false,
+      bySeized: false,
+      byFavorites: !prev.byFavorites,
     }));
   };
 
@@ -129,7 +153,7 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
                 filters.byLength && styles.activeFilter,
               ]}
             >
-              <SizeIcon size={24} color={filters.byLength ? "#000" : "#666"} />
+              <SizeIcon size={30} color={filters.byLength ? "#000" : "#666"} />
               {filters.byLength && <View style={styles.underline} />}
             </TouchableOpacity>
 
@@ -141,7 +165,7 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
               ]}
             >
               <SpeedometerIcon
-                size={24}
+                size={30}
                 color={filters.bySpeed ? "#000" : "#666"}
               />
               {filters.bySpeed && <View style={styles.underline} />}
@@ -154,7 +178,7 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
                 filters.byPrice && styles.activeFilter,
               ]}
             >
-              <PriceIcon size={24} color={filters.byPrice ? "#000" : "#666"} />
+              <PriceIcon size={30} color={filters.byPrice ? "#000" : "#666"} />
               {filters.byPrice && <View style={styles.underline} />}
             </TouchableOpacity>
 
@@ -166,10 +190,25 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
               ]}
             >
               <SeizedIcon
-                size={24}
+                size={30}
                 color={filters.bySeized ? "#000" : "#666"}
               />
               {filters.bySeized && <View style={styles.underline} />}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={toggleFavoritesFilter}
+              style={[
+                styles.filterButton,
+                filters.byFavorites && styles.activeFilter,
+              ]}
+            >
+              <Ionicons
+                name={filters.byFavorites ? "heart" : "heart-outline"}
+                size={30}
+                color={filters.byFavorites ? "#000" : "#666"}
+              />
+              {filters.byFavorites && <View style={styles.underline} />}
             </TouchableOpacity>
           </View>
 
@@ -182,7 +221,7 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
             style={styles.searchButton}
             onPress={() => navigation.navigate("Search", { yachts })}
           >
-            <Ionicons name="search" size={24} color="white" />
+            <Ionicons name="search" size={30} color="white" />
           </TouchableOpacity>
         </>
       )}
@@ -204,13 +243,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-evenly",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 12, // Increased to accommodate larger icons
     borderBottomWidth: 1,
     borderBottomColor: "#eee",
     marginTop: 2,
   },
   filterButton: {
-    padding: 10,
+    padding: 12, // Increased to accommodate larger icons
     alignItems: "center",
     position: "relative",
   },

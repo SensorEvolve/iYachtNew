@@ -46,6 +46,8 @@ export interface Yacht {
   price: string;
   seizedBy: string;
   imageName: string;
+  // New favorite property
+  isFavorite?: boolean;
 }
 
 // Preserve existing filter interface
@@ -63,4 +65,15 @@ export type SortOption = "length" | "year" | "name" | "builder";
 export type SortDirection = "asc" | "desc";
 
 // Add new type for raw CSV data
-export type RawYachtData = Omit<Yacht, "id">;
+export type RawYachtData = Omit<Yacht, "id" | "isFavorite">;
+
+// New types for favorites functionality
+export interface FavoriteState {
+  favorites: Set<string>; // Set of yacht IDs
+}
+
+export type FavoriteAction =
+  | { type: "ADD_FAVORITE"; id: string }
+  | { type: "REMOVE_FAVORITE"; id: string }
+  | { type: "TOGGLE_FAVORITE"; id: string }
+  | { type: "SET_FAVORITES"; favorites: string[] };
