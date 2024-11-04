@@ -1,20 +1,24 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  Image,
   Dimensions,
+  Platform,
   FlatList,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
+  ActivityIndicator,
   TouchableOpacity,
+  PanResponder,
+  Animated,
+  GestureResponderEvent,
+  PanResponderGestureState,
 } from "react-native";
-import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { Ionicons } from "@expo/vector-icons";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../App";
-import { getMainImage, getDetailImages } from "../utils/imageUtils";
+import { getDetailImages } from "../utils/imageUtils";
+import { toggleFavorite } from "../utils/db";
+import { Ionicons } from "@expo/vector-icons";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Detail">;
 
@@ -22,38 +26,149 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
   const { yacht } = route.params;
   const windowWidth = Dimensions.get("window").width;
   const [activeIndex, setActiveIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [images, setImages] = useState<string[]>([]);
   const [isFavorite, setIsFavorite] = useState(yacht.isFavorite || false);
   const flatListRef = useRef<FlatList>(null);
+  const scale = useRef(new Animated.Value(1)).current;
+  const isZoomed = useRef<{ current: boolean }>({ current: false });
+  const [enabled, setEnabled] = useState(true);
+  const lastTap = useRef<number>(0);
 
-  // Get both main image and any additional detail images
-  const mainImage = getMainImage(yacht.imageName);
-  const detailImages = getDetailImages(yacht.imageName);
-  const images = detailImages.length > 0 ? detailImages : [mainImage];
+  // Load images when component mounts
+  useEffect(() => {
+    const loadImages = async () => {
+      try {
+        setLoading(true);
+        const detailImages = await getDetailImages(Number(yacht.id));
+        setImages(detailImages);
+      } catch (error) {
+        console.error("Error loading images:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadImages();
+  }, [yacht.id]);
 
-  const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const slideSize = event.nativeEvent.layoutMeasurement.width;
-    const index = event.nativeEvent.contentOffset.x / slideSize;
-    const roundIndex = Math.round(index);
-    setActiveIndex(roundIndex);
+  // Handle favorite toggle
+  const handleFavoriteToggle = async () => {
+    try {
+      await toggleFavorite(Number(yacht.id));
+      setIsFavorite(!isFavorite);
+    } catch (error) {
+      console.error("Error toggling favorite:", error);
+    }
   };
 
-  const toggleFavorite = () => {
-    setIsFavorite(!isFavorite);
-    // Here you would typically update the yacht's favorite status in your global state/storage
+  const handleDoubleTap = () => {
+    const now = Date.now();
+    const DOUBLE_PRESS_DELAY = 300;
+
+    if (now - lastTap.current < DOUBLE_PRESS_DELAY) {
+      const toValue = isZoomed.current.current ? 1 : 2;
+      Animated.spring(scale, {
+        toValue,
+        useNativeDriver: true,
+      }).start();
+      isZoomed.current.current = !isZoomed.current.current;
+      setEnabled(!isZoomed.current.current);
+    }
+    lastTap.current = now;
   };
 
-  const renderImage = ({ item }: { item: any }) => (
-    <Image
-      source={item}
-      style={[styles.image, { width: windowWidth, height: windowWidth * 0.75 }]}
-      resizeMode="cover"
-    />
+  const panResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: () => {
+      handleDoubleTap();
+    },
+    onPanResponderMove: (
+      evt: GestureResponderEvent,
+      _: PanResponderGestureState,
+    ) => {
+      const touches = evt.nativeEvent.changedTouches;
+      if (touches && touches.length === 2) {
+        const touchA = touches[0];
+        const touchB = touches[1];
+
+        const distance = Math.sqrt(
+          Math.pow(touchA.pageX - touchB.pageX, 2) +
+            Math.pow(touchA.pageY - touchB.pageY, 2),
+        );
+
+        const newScale = Math.max(1, Math.min(distance / 200, 3));
+        scale.setValue(newScale);
+        setEnabled(newScale <= 1);
+      }
+    },
+    onPanResponderRelease: () => {
+      const currentScale = (scale as any)._value;
+      if (currentScale < 1) {
+        Animated.spring(scale, {
+          toValue: 1,
+          useNativeDriver: true,
+        }).start();
+        setEnabled(true);
+      } else if (currentScale > 3) {
+        Animated.spring(scale, {
+          toValue: 3,
+          useNativeDriver: true,
+        }).start();
+        setEnabled(false);
+      }
+    },
+  });
+
+  const renderImage = ({ item }: { item: string }) => (
+    <View
+      style={[styles.imageSlide, { width: windowWidth }]}
+      {...panResponder.panHandlers}
+    >
+      {loading && (
+        <ActivityIndicator
+          style={styles.loadingIndicator}
+          size="large"
+          color="#999"
+        />
+      )}
+      <Animated.Image
+        source={{ uri: item }}
+        style={[
+          styles.heroImage,
+          {
+            width: windowWidth,
+            transform: [{ scale }],
+          },
+        ]}
+        resizeMode="contain"
+        onLoadStart={() => setLoading(true)}
+        onLoadEnd={() => setLoading(false)}
+      />
+    </View>
   );
 
+  const handleScroll = (event: any) => {
+    if (enabled) {
+      const contentOffset = event.nativeEvent.contentOffset;
+      const index = Math.round(contentOffset.x / windowWidth);
+      setActiveIndex(index);
+    }
+  };
+
+  const goToImage = (index: number) => {
+    if (enabled) {
+      flatListRef.current?.scrollToOffset({
+        offset: index * windowWidth,
+        animated: true,
+      });
+    }
+  };
+
   return (
-    <ScrollView style={styles.container}>
-      {/* Image Section */}
-      <View>
+    <ScrollView style={styles.container} scrollEnabled={false}>
+      {/* Image Carousel */}
+      <View style={styles.carouselContainer}>
         <FlatList
           ref={flatListRef}
           data={images}
@@ -61,14 +176,18 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
-          onScroll={onScroll}
+          onScroll={handleScroll}
           scrollEventThrottle={16}
+          scrollEnabled={enabled}
         />
+
+        {/* Page Indicators */}
         {images.length > 1 && (
           <View style={styles.pagination}>
             {images.map((_, index) => (
-              <View
+              <TouchableOpacity
                 key={index}
+                onPress={() => goToImage(index)}
                 style={[
                   styles.paginationDot,
                   index === activeIndex && styles.paginationDotActive,
@@ -79,126 +198,121 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
         )}
       </View>
 
-      {/* Header Section */}
-      <View style={styles.headerSection}>
-        <View style={styles.titleRow}>
-          <Text style={styles.yachtName}>{yacht.name}</Text>
-          <TouchableOpacity
-            onPress={toggleFavorite}
-            style={styles.favoriteButton}
-          >
-            <Ionicons
-              name={isFavorite ? "heart" : "heart-outline"}
-              size={30}
-              color={isFavorite ? "#000" : "#666"}
-            />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.headerDetails}>
-          <Text style={styles.headerText}>Built by {yacht.builtBy}</Text>
-          <Text style={styles.headerText}>{yacht.length}m</Text>
-        </View>
-      </View>
-
-      {/* Performance Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Performance</Text>
-        <View style={styles.detailRow}>
-          <Text style={styles.label}>Top Speed</Text>
-          <Text style={styles.value}>{yacht.topSpeed} knots</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.label}>Cruise Speed</Text>
-          <Text style={styles.value}>{yacht.cruiseSpeed} knots</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.label}>Range</Text>
-          <Text style={styles.value}>{yacht.range} nm</Text>
-        </View>
-      </View>
-
-      {/* Rest of the existing sections remain unchanged */}
-      {/* Capacity Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Capacity</Text>
-        <View style={styles.detailRow}>
-          <Text style={styles.label}>Guests</Text>
-          <Text style={styles.value}>{yacht.guests}</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.label}>Crew</Text>
-          <Text style={styles.value}>{yacht.crew}</Text>
-        </View>
-      </View>
-
-      {/* Technical Details */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Technical Details</Text>
-        <View style={styles.detailRow}>
-          <Text style={styles.label}>Type</Text>
-          <Text style={styles.value}>{yacht.yachtType}</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.label}>Beam</Text>
-          <Text style={styles.value}>{yacht.beam}m</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.label}>Delivered</Text>
-          <Text style={styles.value}>{yacht.delivered}</Text>
-        </View>
-        {yacht.refit && (
-          <View style={styles.detailRow}>
-            <Text style={styles.label}>Last Refit</Text>
-            <Text style={styles.value}>{yacht.refit}</Text>
-          </View>
-        )}
-        <View style={styles.detailRow}>
-          <Text style={styles.label}>Flag</Text>
-          <Text style={styles.value}>{yacht.flag}</Text>
-        </View>
-      </View>
-
-      {/* Design Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Design</Text>
-        <View style={styles.detailRow}>
-          <Text style={styles.label}>Exterior Designer</Text>
-          <Text style={styles.value}>{yacht.exteriorDesigner}</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.label}>Interior Designer</Text>
-          <Text style={styles.value}>{yacht.interiorDesigner}</Text>
-        </View>
-      </View>
-
-      {/* About Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>About</Text>
-        <Text style={styles.description}>{yacht.shortInfo}</Text>
-      </View>
-
-      {/* Ownership Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Ownership</Text>
-        <View style={styles.detailRow}>
-          <Text style={styles.label}>Owner</Text>
-          <Text style={styles.value}>{yacht.owner}</Text>
-        </View>
-        {yacht.price && (
-          <View style={styles.detailRow}>
-            <Text style={styles.label}>Price</Text>
-            <Text style={styles.value}>{yacht.price}</Text>
-          </View>
-        )}
-        {yacht.seizedBy && (
-          <View style={styles.detailRow}>
-            <Text style={[styles.label, styles.seizedLabel]}>Status</Text>
-            <Text style={[styles.value, styles.seizedValue]}>
-              Seized by {yacht.seizedBy}
+      {/* Content ScrollView */}
+      <ScrollView style={styles.contentScroll}>
+        <View style={styles.content}>
+          {/* Header Section with Favorite Button */}
+          <View style={styles.headerSection}>
+            <View style={styles.titleRow}>
+              <Text style={styles.yachtName}>{yacht.name}</Text>
+              <TouchableOpacity
+                onPress={handleFavoriteToggle}
+                style={styles.favoriteButton}
+              >
+                <Ionicons
+                  name={isFavorite ? "heart" : "heart-outline"}
+                  size={28}
+                  color={isFavorite ? "#FF4444" : "#666666"}
+                />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.mainSpecs}>
+              {yacht.length}m • Built {yacht.delivered}
             </Text>
+            <Text style={styles.builder}>Built by {yacht.builtBy}</Text>
           </View>
-        )}
-      </View>
+
+          {/* Rest of your sections... */}
+          {/* About Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>About</Text>
+            <Text style={styles.description}>{yacht.shortInfo}</Text>
+          </View>
+
+          {/* Key Specifications */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Key Specifications</Text>
+            <View style={styles.statsGrid}>
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>Length</Text>
+                <Text style={styles.statValue}>{yacht.length}m</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>Beam</Text>
+                <Text style={styles.statValue}>{yacht.beam}m</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>Guests</Text>
+                <Text style={styles.statValue}>{yacht.guests}</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>Crew</Text>
+                <Text style={styles.statValue}>{yacht.crew}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Performance */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Performance</Text>
+            <View style={styles.infoRow}>
+              <Text style={styles.label}>Top Speed</Text>
+              <Text style={styles.value}>{yacht.topSpeed} knots</Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.label}>Cruise Speed</Text>
+              <Text style={styles.value}>{yacht.cruiseSpeed} knots</Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.label}>Range</Text>
+              <Text style={styles.value}>{yacht.range} nm</Text>
+            </View>
+          </View>
+
+          {/* Design */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Design</Text>
+            <View style={styles.infoRow}>
+              <Text style={styles.label}>Yacht Type</Text>
+              <Text style={styles.value}>{yacht.yachtType}</Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.label}>Exterior Designer</Text>
+              <Text style={styles.value}>{yacht.exteriorDesigner}</Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.label}>Interior Designer</Text>
+              <Text style={styles.value}>{yacht.interiorDesigner}</Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.label}>Flag</Text>
+              <Text style={styles.value}>{yacht.flag}</Text>
+            </View>
+          </View>
+
+          {/* Ownership */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Ownership</Text>
+            <View style={styles.infoRow}>
+              <Text style={styles.label}>Owner</Text>
+              <Text style={styles.value}>{yacht.owner}</Text>
+            </View>
+            {yacht.price && (
+              <View style={styles.infoRow}>
+                <Text style={styles.label}>Price</Text>
+                <Text style={styles.value}>{yacht.price}</Text>
+              </View>
+            )}
+            {yacht.seizedBy && (
+              <View style={styles.seizedContainer}>
+                <Text style={styles.seizedText}>
+                  🚫 Seized by {yacht.seizedBy}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </ScrollView>
     </ScrollView>
   );
 };
@@ -208,84 +322,32 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#FFFFFF",
   },
-  image: {
+  imageSlide: {
+    height: 300,
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  loadingIndicator: {
+    position: "absolute",
+    zIndex: 1,
+  },
+  heroImage: {
+    height: 300,
+    width: "100%",
+  },
+  carouselContainer: {
     backgroundColor: "#f5f5f5",
-  },
-  headerSection: {
-    paddingHorizontal: 15,
-    paddingVertical: 20,
-    borderBottomWidth: 0.5,
-    borderBottomColor: "#E5E5E5",
-  },
-  titleRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  yachtName: {
-    fontSize: 32,
-    fontWeight: "700",
-    color: "#000000",
-    flex: 1,
-  },
-  favoriteButton: {
-    padding: 8,
-  },
-  headerDetails: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  headerText: {
-    fontSize: 18,
-    color: "#666666",
-  },
-  section: {
-    marginBottom: 20,
-    paddingHorizontal: 15,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: "600",
-    marginBottom: 10,
-    color: "#000000",
-  },
-  detailRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 8,
-    borderBottomWidth: 0.5,
-    borderBottomColor: "#E5E5E5",
-  },
-  label: {
-    fontSize: 16,
-    color: "#666666",
-    flex: 1,
-  },
-  value: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#000000",
-    flex: 2,
-    textAlign: "right",
-  },
-  description: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: "#333333",
-  },
-  seizedLabel: {
-    color: "#666666",
-  },
-  seizedValue: {
-    color: "#666666",
-    fontStyle: "italic",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   pagination: {
     flexDirection: "row",
     position: "absolute",
-    bottom: 15,
+    bottom: 10,
     alignSelf: "center",
   },
   paginationDot: {
@@ -297,7 +359,123 @@ const styles = StyleSheet.create({
   },
   paginationDotActive: {
     backgroundColor: "#FFFFFF",
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  contentScroll: {
+    flex: 1,
+  },
+  content: {
+    padding: 16,
+  },
+  headerSection: {
+    marginBottom: 24,
+  },
+  titleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  favoriteButton: {
+    padding: 8,
+  },
+  yachtName: {
+    fontSize: 32,
+    fontWeight: "bold",
+    color: "#000000",
+    flex: 1,
+    marginRight: 16,
+  },
+  mainSpecs: {
+    fontSize: 18,
+    color: "#666666",
+    marginBottom: 4,
+  },
+  builder: {
+    fontSize: 16,
+    color: "#666666",
+    fontStyle: "italic",
+  },
+  section: {
+    marginBottom: 24,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#000000",
+    marginBottom: 16,
+  },
+  description: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: "#333333",
+  },
+  statsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    margin: -8,
+  },
+  statItem: {
+    width: "50%",
+    padding: 8,
+  },
+  statLabel: {
+    fontSize: 14,
+    color: "#666666",
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#000000",
+  },
+  infoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
+  },
+  label: {
+    fontSize: 16,
+    color: "#666666",
+    flex: 1,
+  },
+  value: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#000000",
+    flex: 1,
+    textAlign: "right",
+  },
+  seizedContainer: {
+    marginTop: 12,
+    padding: 16,
+    backgroundColor: "#FFF0F0",
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: "#FF4444",
+  },
+  seizedText: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#FF4444",
   },
 });
-
-export default DetailScreen;

@@ -1,58 +1,39 @@
-const requireYachtImages = () => {
-  // @ts-ignore - Ignore TypeScript error for require.context
-  const context = require.context("../assets/yachts", false, /\.(png|jpg)$/);
-  const images: YachtImageMap = {};
-  context.keys().forEach((key: string) => {
-    const imageName = key
-      .replace(/\.\//, "")
-      .replace(/\.(png|jpg)$/, "")
-      .toLowerCase()
-      .replace(/\s+/g, "_");
-    images[imageName] = context(key);
-  });
-  return images;
+import { getYachtImages } from "./db";
+import type { ImageRecord } from "./db";
+
+export const getMainImage = async (yachtId: number): Promise<string> => {
+  try {
+    const images = await getYachtImages(yachtId);
+    const mainImage = images.find(
+      (img: ImageRecord) => img.image_type === "main",
+    );
+    return mainImage ? `data:image/png;base64,${mainImage.image_data}` : "";
+  } catch (error) {
+    console.error("Error loading main image:", error);
+    return "";
+  }
 };
 
-const yachtImages = requireYachtImages();
-const PLACEHOLDER = require("../assets/yachts/placeholder.png");
+export const getDetailImages = async (yachtId: number): Promise<string[]> => {
+  try {
+    const images = await getYachtImages(yachtId);
+    const detailImages = images
+      .filter((img: ImageRecord) => img.image_type === "detail")
+      .sort(
+        (a: ImageRecord, b: ImageRecord) =>
+          (a.image_order || 0) - (b.image_order || 0),
+      )
+      .map((img: ImageRecord) => `data:image/png;base64,${img.image_data}`);
 
-// Type assertion to tell TypeScript this returns a valid RN image source
-export const getMainImage = (imageName: string): number => {
-  if (!imageName) return PLACEHOLDER;
-  const cleanImageName = imageName.toLowerCase();
-  const image = yachtImages[cleanImageName] || PLACEHOLDER;
-  return image as number; // Assert the type to number
-};
-
-export const getDetailImages = (imageName: string): number[] => {
-  if (!imageName) return [PLACEHOLDER];
-  const cleanImageName = imageName.toLowerCase();
-  const detailImages: number[] = [];
-
-  // Look for numbered variants
-  let index = 1;
-  while (true) {
-    const detailImageName = `${cleanImageName}_${index}`;
-    if (yachtImages[detailImageName]) {
-      detailImages.push(yachtImages[detailImageName] as number);
-      index++;
-    } else {
-      break;
+    // If no detail images, use main image
+    if (detailImages.length === 0) {
+      const mainImage = await getMainImage(yachtId);
+      return mainImage ? [mainImage] : [];
     }
-  }
 
-  // If no detail images found, use the main image
-  if (detailImages.length === 0) {
-    const mainImage = getMainImage(cleanImageName);
-    return [mainImage];
+    return detailImages;
+  } catch (error) {
+    console.error("Error loading detail images:", error);
+    return [];
   }
-
-  return detailImages;
 };
-
-// Update interface to match React Native's image source type
-interface YachtImageMap {
-  [key: string]: number;
-}
-
-export type { YachtImageMap };
