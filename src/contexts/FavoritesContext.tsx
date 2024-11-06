@@ -1,79 +1,119 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Alert } from "react-native";
+import React, { useEffect, useState } from "react";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { NavigationContainer } from "@react-navigation/native";
+import {
+  createNativeStackNavigator,
+  NativeStackNavigationOptions,
+} from "@react-navigation/native-stack";
+import HomeScreen from "../screens/HomeScreen";
+import DetailScreen from "../screens/DetailScreen";
+import SearchScreen from "../screens/SearchScreen";
+import { FavoritesScreen } from "../screens/FavoritesScreen";
+import { Yacht } from "../Types/yacht";
+import { loadYachtData } from "../utils/dataParser";
+import * as FavoritesContext from "./FavoritesContext";
 
-interface FavoritesContextType {
-  favorites: string[];
-  toggleFavorite: (id: string) => void;
-  isFavorite: (id: string) => boolean;
+export type RootStackParamList = {
+  Home: undefined;
+  Detail: { yacht: Yacht };
+  Search: { yachts: Yacht[] };
+  Favorites: { yachts: Yacht[] };
+};
+
+const Stack = createNativeStackNavigator<RootStackParamList>();
+
+const screenOptions: NativeStackNavigationOptions = {
+  headerShadowVisible: false,
+  headerBackTitleVisible: false,
+  headerStyle: {
+    backgroundColor: "#fff",
+  },
+  headerTitleStyle: {
+    fontSize: 28,
+    fontWeight: "600",
+    color: "#2B2B2B",
+    letterSpacing: 0.5,
+  },
+};
+
+function AppNavigator({
+  yachts,
+  isLoading,
+}: {
+  yachts: Yacht[];
+  isLoading: boolean;
+}) {
+  return (
+    <Stack.Navigator initialRouteName="Home" screenOptions={screenOptions}>
+      <Stack.Screen
+        name="Home"
+        options={{
+          title: "SUPER YACHTS",
+          headerTitleStyle: {
+            fontSize: 28,
+            fontWeight: "700",
+            color: "#2B2B2B",
+            letterSpacing: 0.5,
+          },
+        }}
+      >
+        {(props) => (
+          <HomeScreen {...props} yachts={yachts} isLoading={isLoading} />
+        )}
+      </Stack.Screen>
+      <Stack.Screen
+        name="Search"
+        options={{
+          title: "Search",
+        }}
+      >
+        {(props) => <SearchScreen {...props} />}
+      </Stack.Screen>
+      <Stack.Screen
+        name="Detail"
+        component={DetailScreen}
+        options={({ route }) => ({
+          title: route.params.yacht.name,
+        })}
+      />
+      <Stack.Screen
+        name="Favorites"
+        options={{
+          title: "Favorites",
+        }}
+      >
+        {(props) => <FavoritesScreen {...props} yachts={yachts} />}
+      </Stack.Screen>
+    </Stack.Navigator>
+  );
 }
 
-const FavoritesContext = createContext<FavoritesContextType | undefined>(
-  undefined,
-);
+export default function App() {
+  const [yachts, setYachts] = useState<Yacht[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-const STORAGE_KEY = "@favorites";
-
-export const FavoritesProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
-  const [favorites, setFavorites] = useState<string[]>([]);
-
-  // Load favorites when component mounts
   useEffect(() => {
-    const loadFavorites = async () => {
+    const loadYachts = async () => {
       try {
-        const saved = await AsyncStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          setFavorites(JSON.parse(saved));
-        }
-      } catch (e) {
-        console.error("Failed to load favorites:", e);
+        setIsLoading(true);
+        const loadedYachts = await loadYachtData();
+        setYachts(loadedYachts);
+      } catch (error) {
+        console.error("Error loading yachts:", error);
+      } finally {
+        setIsLoading(false);
       }
     };
-    loadFavorites();
+    loadYachts();
   }, []);
 
-  // Save favorites whenever they change
-  useEffect(() => {
-    const saveFavorites = async () => {
-      try {
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(favorites));
-        console.log("Favorites saved:", favorites); // Debug log
-      } catch (e) {
-        console.error("Failed to save favorites:", e);
-      }
-    };
-    saveFavorites(); // Always save, regardless of length
-  }, [favorites]);
-
-  const toggleFavorite = async (id: string) => {
-    setFavorites((current) => {
-      const newFavorites = current.includes(id)
-        ? current.filter((fav) => fav !== id)
-        : [...current, id];
-      console.log("Toggling favorite:", id, "New favorites:", newFavorites); // Debug log
-      return newFavorites;
-    });
-  };
-
-  const isFavorite = (id: string) => favorites.includes(id);
-
   return (
-    <FavoritesContext.Provider
-      value={{ favorites, toggleFavorite, isFavorite }}
-    >
-      {children}
-    </FavoritesContext.Provider>
+    <SafeAreaProvider>
+      <FavoritesContext.Provider>
+        <NavigationContainer>
+          <AppNavigator yachts={yachts} isLoading={isLoading} />
+        </NavigationContainer>
+      </FavoritesContext.Provider>
+    </SafeAreaProvider>
   );
-};
-
-export const useFavorites = () => {
-  const context = useContext(FavoritesContext);
-  if (!context) {
-    throw new Error("useFavorites must be used within FavoritesProvider");
-  }
-  return context;
-};
-
-export default FavoritesContext;
+}

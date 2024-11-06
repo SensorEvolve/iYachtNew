@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback, memo } from "react";
 import {
   View,
   Text,
@@ -16,56 +16,81 @@ interface YachtListProps {
   onYachtPress: (yacht: Yacht) => void;
 }
 
+const YachtItem = memo(
+  ({
+    yacht,
+    onPress,
+    onLoadStart,
+    onLoadEnd,
+  }: {
+    yacht: Yacht;
+    onPress: () => void;
+    onLoadStart: () => void;
+    onLoadEnd: () => void;
+  }) => {
+    const imageSource = getMainImage(yacht.imageName);
+
+    return (
+      <TouchableOpacity style={styles.yachtContainer} onPress={onPress}>
+        <View style={styles.imageContainer}>
+          <Image
+            source={imageSource}
+            style={styles.yachtImage}
+            resizeMode="contain"
+            onLoadStart={onLoadStart}
+            onLoadEnd={onLoadEnd}
+          />
+        </View>
+        <View style={styles.infoContainer}>
+          <Text style={styles.name}>{yacht.name}</Text>
+          <Text style={styles.details}>
+            {yacht.length}m • Built {yacht.delivered}
+          </Text>
+          <Text style={styles.builder}>{yacht.builtBy}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  },
+);
+
 const YachtList: React.FC<YachtListProps> = ({ yachts, onYachtPress }) => {
   const [loadingImages, setLoadingImages] = useState<{
     [key: string]: boolean;
   }>({});
 
-  const renderYacht = ({ item }: { item: Yacht }) => {
-    const imageSource = getMainImage(item.imageName);
+  const renderYacht = useCallback(
+    ({ item }: { item: Yacht }) => {
+      const handleLoadStart = () =>
+        setLoadingImages((prev) => ({ ...prev, [item.id]: true }));
 
-    return (
-      <TouchableOpacity
-        style={styles.yachtContainer}
-        onPress={() => onYachtPress(item)}
-      >
-        <View style={styles.imageContainer}>
-          {loadingImages[item.id] && (
-            <ActivityIndicator
-              style={styles.loadingIndicator}
-              size="large"
-              color="#999"
-            />
-          )}
-          <Image
-            source={imageSource}
-            style={styles.yachtImage}
-            resizeMode="contain"
-            onLoadStart={() =>
-              setLoadingImages((prev) => ({ ...prev, [item.id]: true }))
-            }
-            onLoadEnd={() =>
-              setLoadingImages((prev) => ({ ...prev, [item.id]: false }))
-            }
-          />
-        </View>
-        <View style={styles.infoContainer}>
-          <Text style={styles.name}>{item.name}</Text>
-          <Text style={styles.details}>
-            {item.length}m • Built {item.delivered}
-          </Text>
-          <Text style={styles.builder}>{item.builtBy}</Text>
-        </View>
-      </TouchableOpacity>
-    );
-  };
+      const handleLoadEnd = () =>
+        setLoadingImages((prev) => ({ ...prev, [item.id]: false }));
+
+      return (
+        <YachtItem
+          yacht={item}
+          onPress={() => onYachtPress(item)}
+          onLoadStart={handleLoadStart}
+          onLoadEnd={handleLoadEnd}
+        />
+      );
+    },
+    [onYachtPress],
+  );
+
+  const keyExtractor = useCallback((item: Yacht) => item.id, []);
 
   return (
     <FlatList
       data={yachts}
       renderItem={renderYacht}
-      keyExtractor={(item) => item.id}
+      keyExtractor={keyExtractor}
       contentContainerStyle={styles.listContainer}
+      removeClippedSubviews={true}
+      maxToRenderPerBatch={10}
+      updateCellsBatchingPeriod={50}
+      windowSize={5}
+      initialNumToRender={6}
     />
   );
 };
@@ -123,4 +148,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default YachtList;
+export default memo(YachtList);
