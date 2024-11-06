@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NavigationContainer } from "@react-navigation/native";
 import {
   createNativeStackNavigator,
@@ -7,6 +8,7 @@ import {
 import HomeScreen from "./src/screens/HomeScreen";
 import DetailScreen from "./src/screens/DetailScreen";
 import SearchScreen from "./src/screens/SearchScreen";
+import FavoritesScreen from "./src/screens/FavouritesScreen";
 import { Yacht } from "./src/Types/yacht";
 import { loadYachtData } from "./src/utils/dataParser";
 import { FavoritesProvider } from "./src/contexts/FavoritesContext";
@@ -15,6 +17,7 @@ export type RootStackParamList = {
   Home: undefined;
   Detail: { yacht: Yacht };
   Search: { yachts: Yacht[] };
+  Favorites: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -75,6 +78,15 @@ function AppNavigator({
           title: route.params.yacht.name,
         })}
       />
+
+      <Stack.Screen
+        name="Favorites"
+        options={{
+          title: "Favorites",
+        }}
+      >
+        {(props) => <FavoritesScreen {...props} yachts={yachts} />}
+      </Stack.Screen>
     </Stack.Navigator>
   );
 }
@@ -99,10 +111,12 @@ export default function App() {
   }, []);
 
   return (
-    <FavoritesProvider>
-      <NavigationContainer>
-        <AppNavigator yachts={yachts} isLoading={isLoading} />
-      </NavigationContainer>
-    </FavoritesProvider>
+    <SafeAreaProvider>
+      <FavoritesProvider>
+        <NavigationContainer>
+          <AppNavigator yachts={yachts} isLoading={isLoading} />
+        </NavigationContainer>
+      </FavoritesProvider>
+    </SafeAreaProvider>
   );
 }

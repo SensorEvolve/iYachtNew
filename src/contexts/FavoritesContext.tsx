@@ -19,6 +19,7 @@ export const FavoritesProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const [favorites, setFavorites] = useState<string[]>([]);
 
+  // Load favorites when component mounts
   useEffect(() => {
     const loadFavorites = async () => {
       try {
@@ -33,26 +34,26 @@ export const FavoritesProvider: React.FC<{ children: React.ReactNode }> = ({
     loadFavorites();
   }, []);
 
+  // Save favorites whenever they change
   useEffect(() => {
     const saveFavorites = async () => {
       try {
         await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(favorites));
+        console.log("Favorites saved:", favorites); // Debug log
       } catch (e) {
         console.error("Failed to save favorites:", e);
       }
     };
-    if (favorites.length > 0) {
-      saveFavorites();
-    }
+    saveFavorites(); // Always save, regardless of length
   }, [favorites]);
 
-  const toggleFavorite = (id: string) => {
+  const toggleFavorite = async (id: string) => {
     setFavorites((current) => {
-      if (current.includes(id)) {
-        return current.filter((fav) => fav !== id);
-      } else {
-        return [...current, id];
-      }
+      const newFavorites = current.includes(id)
+        ? current.filter((fav) => fav !== id)
+        : [...current, id];
+      console.log("Toggling favorite:", id, "New favorites:", newFavorites); // Debug log
+      return newFavorites;
     });
   };
 
@@ -74,3 +75,5 @@ export const useFavorites = () => {
   }
   return context;
 };
+
+export default FavoritesContext;

@@ -8,6 +8,7 @@ export const loadYachtData = async (): Promise<Yacht[]> => {
     const asset = Asset.fromModule(csvModule);
     await asset.downloadAsync();
     const csvContent = await FileSystem.readAsStringAsync(asset.localUri!);
+
     const lines = csvContent
       .split("\n")
       .map((line) => line.trim())
@@ -17,6 +18,7 @@ export const loadYachtData = async (): Promise<Yacht[]> => {
 
     const yachts = lines.map((line, index) => {
       const values = line.split(";").map((v) => v.trim());
+
       return {
         id: String(index),
         name: values[CSV_COLUMNS.NAME] || "",
@@ -41,7 +43,7 @@ export const loadYachtData = async (): Promise<Yacht[]> => {
         imageName:
           values[CSV_COLUMNS.IMAGE_NAME] ||
           values[CSV_COLUMNS.NAME].toLowerCase().replace(/\s+/g, "_"),
-        isFavorite: false, // Add default favorite state
+        isFavorite: false,
       };
     });
 
