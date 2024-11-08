@@ -40,8 +40,7 @@ export const loadYachtData = async (): Promise<Yacht[]> => {
         owner: values[CSV_COLUMNS.OWNER] || "",
         price: values[CSV_COLUMNS.PRICE] || "",
         seizedBy: values[CSV_COLUMNS.SEIZED_BY] || "",
-        imageName:
-          values[CSV_COLUMNS.IMAGE_NAME] ||
+        imageName: values[CSV_COLUMNS.IMAGE_NAME] || 
           values[CSV_COLUMNS.NAME].toLowerCase().replace(/\s+/g, "_"),
         isFavorite: false,
       };

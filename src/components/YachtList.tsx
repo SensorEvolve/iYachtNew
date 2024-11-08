@@ -6,7 +6,6 @@ import {
   FlatList,
   TouchableOpacity,
   Image,
-  ActivityIndicator,
 } from "react-native";
 import type { Yacht } from "../Types/yacht";
 import { getMainImage } from "../utils/imageUtils";
@@ -119,10 +118,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#f5f5f5",
     justifyContent: "center",
     alignItems: "center",
-  },
-  loadingIndicator: {
-    position: "absolute",
-    zIndex: 1,
+    position: "relative",
   },
   yachtImage: {
     width: "100%",

@@ -12,9 +12,9 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { Ionicons } from "@expo/vector-icons";
 import type { RootStackParamList } from "../../App";
 import { getMainImage, getDetailImages } from "../utils/imageUtils";
+import { FavoritesButton } from "../components/FavoritesButton";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Detail">;
 
@@ -22,13 +22,24 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
   const { yacht } = route.params;
   const windowWidth = Dimensions.get("window").width;
   const [activeIndex, setActiveIndex] = useState(0);
-  const [isFavorite, setIsFavorite] = useState(yacht.isFavorite || false);
   const flatListRef = useRef<FlatList>(null);
 
   // Get both main image and any additional detail images
   const mainImage = getMainImage(yacht.imageName);
   const detailImages = getDetailImages(yacht.imageName);
   const images = detailImages.length > 0 ? detailImages : [mainImage];
+
+  const renderImage = ({ item }: { item: number }) => {
+    return (
+      <View style={[styles.imageSlide, { width: windowWidth }]}>
+        <Image
+          source={item}
+          style={[styles.heroImage, { width: windowWidth }]}
+          resizeMode="contain"
+        />
+      </View>
+    );
+  };
 
   const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const slideSize = event.nativeEvent.layoutMeasurement.width;
@@ -37,23 +48,17 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
     setActiveIndex(roundIndex);
   };
 
-  const toggleFavorite = () => {
-    setIsFavorite(!isFavorite);
-    // Here you would typically update the yacht's favorite status in your global state/storage
+  const goToImage = (index: number) => {
+    flatListRef.current?.scrollToOffset({
+      offset: index * windowWidth,
+      animated: true,
+    });
   };
-
-  const renderImage = ({ item }: { item: any }) => (
-    <Image
-      source={item}
-      style={[styles.image, { width: windowWidth, height: windowWidth * 0.75 }]}
-      resizeMode="cover"
-    />
-  );
 
   return (
     <ScrollView style={styles.container}>
       {/* Image Section */}
-      <View>
+      <View style={styles.carouselContainer}>
         <FlatList
           ref={flatListRef}
           data={images}
@@ -67,8 +72,9 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
         {images.length > 1 && (
           <View style={styles.pagination}>
             {images.map((_, index) => (
-              <View
+              <TouchableOpacity
                 key={index}
+                onPress={() => goToImage(index)}
                 style={[
                   styles.paginationDot,
                   index === activeIndex && styles.paginationDotActive,
@@ -83,16 +89,7 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
       <View style={styles.headerSection}>
         <View style={styles.titleRow}>
           <Text style={styles.yachtName}>{yacht.name}</Text>
-          <TouchableOpacity
-            onPress={toggleFavorite}
-            style={styles.favoriteButton}
-          >
-            <Ionicons
-              name={isFavorite ? "heart" : "heart-outline"}
-              size={30}
-              color={isFavorite ? "#000" : "#666"}
-            />
-          </TouchableOpacity>
+          <FavoritesButton yachtId={yacht.id} />
         </View>
         <View style={styles.headerDetails}>
           <Text style={styles.headerText}>Built by {yacht.builtBy}</Text>
@@ -117,7 +114,6 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
         </View>
       </View>
 
-      {/* Rest of the existing sections remain unchanged */}
       {/* Capacity Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Capacity</Text>
@@ -191,10 +187,9 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
           </View>
         )}
         {yacht.seizedBy && (
-          <View style={styles.detailRow}>
-            <Text style={[styles.label, styles.seizedLabel]}>Status</Text>
-            <Text style={[styles.value, styles.seizedValue]}>
-              Seized by {yacht.seizedBy}
+          <View style={styles.seizedContainer}>
+            <Text style={styles.seizedText}>
+              🚫 Seized by {yacht.seizedBy}
             </Text>
           </View>
         )}
@@ -208,84 +203,26 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#FFFFFF",
   },
-  image: {
+  carouselContainer: {
     backgroundColor: "#f5f5f5",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  headerSection: {
-    paddingHorizontal: 15,
-    paddingVertical: 20,
-    borderBottomWidth: 0.5,
-    borderBottomColor: "#E5E5E5",
-  },
-  titleRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  imageSlide: {
+    height: 300,
+    justifyContent: "center",
     alignItems: "center",
-    marginBottom: 8,
   },
-  yachtName: {
-    fontSize: 32,
-    fontWeight: "700",
-    color: "#000000",
-    flex: 1,
-  },
-  favoriteButton: {
-    padding: 8,
-  },
-  headerDetails: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  headerText: {
-    fontSize: 18,
-    color: "#666666",
-  },
-  section: {
-    marginBottom: 20,
-    paddingHorizontal: 15,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: "600",
-    marginBottom: 10,
-    color: "#000000",
-  },
-  detailRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 8,
-    borderBottomWidth: 0.5,
-    borderBottomColor: "#E5E5E5",
-  },
-  label: {
-    fontSize: 16,
-    color: "#666666",
-    flex: 1,
-  },
-  value: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#000000",
-    flex: 2,
-    textAlign: "right",
-  },
-  description: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: "#333333",
-  },
-  seizedLabel: {
-    color: "#666666",
-  },
-  seizedValue: {
-    color: "#666666",
-    fontStyle: "italic",
+  heroImage: {
+    height: 300,
   },
   pagination: {
     flexDirection: "row",
     position: "absolute",
-    bottom: 15,
+    bottom: 10,
     alignSelf: "center",
   },
   paginationDot: {
@@ -297,6 +234,90 @@ const styles = StyleSheet.create({
   },
   paginationDotActive: {
     backgroundColor: "#FFFFFF",
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  headerSection: {
+    padding: 16,
+    backgroundColor: "#FFFFFF",
+  },
+  titleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  yachtName: {
+    fontSize: 28,
+    fontWeight: "600",
+    color: "#000000",
+    flex: 1,
+  },
+  headerDetails: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  headerText: {
+    fontSize: 16,
+    color: "#666666",
+  },
+  section: {
+    marginHorizontal: 16,
+    marginBottom: 24,
+    padding: 16,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#000000",
+    marginBottom: 16,
+  },
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
+  },
+  label: {
+    fontSize: 16,
+    color: "#666666",
+  },
+  value: {
+    fontSize: 16,
+    color: "#000000",
+    fontWeight: "500",
+  },
+  description: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: "#333333",
+  },
+  seizedContainer: {
+    marginTop: 12,
+    padding: 16,
+    backgroundColor: "#FFF0F0",
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: "#FF4444",
+  },
+  seizedText: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#FF4444",
   },
 });
 

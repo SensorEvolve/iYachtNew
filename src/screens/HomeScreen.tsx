@@ -28,7 +28,6 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
     bySpeed: false,
     byPrice: false,
     bySeized: false,
-    byFavorites: false,
   });
 
   const handleYachtPress = (yacht: Yacht) => {
@@ -74,10 +73,6 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
       );
     }
 
-    if (filters.byFavorites) {
-      filtered = filtered.filter((yacht) => yacht.isFavorite);
-    }
-
     return filtered;
   };
 
@@ -89,7 +84,6 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
       bySpeed: false,
       byPrice: false,
       bySeized: false,
-      byFavorites: false,
     }));
   };
 
@@ -100,7 +94,6 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
       bySpeed: !prev.bySpeed,
       byPrice: false,
       bySeized: false,
-      byFavorites: false,
     }));
   };
 
@@ -111,7 +104,6 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
       bySpeed: false,
       byPrice: !prev.byPrice,
       bySeized: false,
-      byFavorites: false,
     }));
   };
 
@@ -122,20 +114,11 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
       bySpeed: false,
       byPrice: false,
       bySeized: !prev.bySeized,
-      byFavorites: false,
     }));
   };
 
-  const toggleFavoritesFilter = () => {
-    setFilters((prev) => ({
-      ...prev,
-      byLength: false,
-      bySpeed: false,
-      byPrice: false,
-      bySeized: false,
-      byFavorites: !prev.byFavorites,
-    }));
-  };
+  const currentRoute = navigation.getState().routes[navigation.getState().index].name;
+  const isFavoritesScreen = currentRoute === "Favorites";
 
   return (
     <View style={styles.container}>
@@ -197,18 +180,18 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={toggleFavoritesFilter}
+              onPress={() => navigation.navigate("Favorites")}
               style={[
                 styles.filterButton,
-                filters.byFavorites && styles.activeFilter,
+                isFavoritesScreen && styles.activeFilter,
               ]}
             >
               <Ionicons
-                name={filters.byFavorites ? "heart" : "heart-outline"}
+                name={isFavoritesScreen ? "heart" : "heart-outline"}
                 size={30}
-                color={filters.byFavorites ? "#000" : "#666"}
+                color={isFavoritesScreen ? "#000" : "#666"}
               />
-              {filters.byFavorites && <View style={styles.underline} />}
+              {isFavoritesScreen && <View style={styles.underline} />}
             </TouchableOpacity>
           </View>
 
@@ -243,13 +226,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-evenly",
     alignItems: "center",
-    paddingVertical: 12, // Increased to accommodate larger icons
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#eee",
     marginTop: 2,
   },
   filterButton: {
-    padding: 12, // Increased to accommodate larger icons
+    padding: 12,
     alignItems: "center",
     position: "relative",
   },

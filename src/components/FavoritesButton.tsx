@@ -3,21 +3,31 @@ import { TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFavorites } from "../contexts/FavoritesContext";
 
-interface FavoriteButtonProps {
+interface FavoritesButtonProps {
   yachtId: string;
   size?: number;
 }
 
-export const FavoriteButton: React.FC<FavoriteButtonProps> = ({
+export const FavoritesButton: React.FC<FavoritesButtonProps> = ({
   yachtId,
   size = 30,
 }) => {
   const { toggleFavorite, isFavorite } = useFavorites();
   const isCurrentlyFavorite = isFavorite(yachtId);
 
+  console.log("=== FavoritesButton Debug ===");
+  console.log("Yacht ID:", yachtId);
+  console.log("Is Favorite:", isCurrentlyFavorite);
+
+  const handlePress = () => {
+    console.log("Button pressed for yacht:", yachtId);
+    toggleFavorite(yachtId);
+    console.log("After toggle attempt");
+  };
+
   return (
     <TouchableOpacity
-      onPress={() => toggleFavorite(yachtId)}
+      onPress={handlePress}
       style={{ padding: 8 }}
     >
       <Ionicons
