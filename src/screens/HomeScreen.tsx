@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, FC } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import {
   View,
   StyleSheet,
@@ -33,7 +33,7 @@ interface FilterButtonProps {
   icon: React.FC<IconProps>;
 }
 
-const FilterButton: FC<FilterButtonProps> = ({
+const FilterButton: React.FC<FilterButtonProps> = ({
   isActive,
   onPress,
   icon: Icon,
@@ -70,7 +70,7 @@ const FilterButton: FC<FilterButtonProps> = ({
   );
 };
 
-const HomeScreen: FC<Props> = ({ navigation, yachts, isLoading }) => {
+const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
   const [filters, setFilters] = useState({
     byLength: false,
     bySpeed: false,
@@ -93,6 +93,11 @@ const HomeScreen: FC<Props> = ({ navigation, yachts, isLoading }) => {
   const handleYachtPress = async (yacht: Yacht) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     navigation.navigate("Detail", { yacht });
+  };
+
+  const handleFavoritesPress = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    navigation.navigate("Favorites", { yachts });
   };
 
   const handleSearchPress = async () => {
@@ -195,6 +200,13 @@ const HomeScreen: FC<Props> = ({ navigation, yachts, isLoading }) => {
           onPress={() => toggleFilter("bySeized")}
           icon={SeizedIcon}
         />
+        <TouchableOpacity
+          style={styles.filterButton}
+          onPress={handleFavoritesPress}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="heart-outline" size={30} color="#666" />
+        </TouchableOpacity>
       </View>
 
       <YachtList

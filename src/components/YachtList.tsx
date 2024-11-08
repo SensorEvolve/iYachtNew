@@ -13,10 +13,9 @@ import {
   TouchableOpacity,
   Image,
   Platform,
+  ActivityIndicator,
   Animated,
-  Dimensions,
 } from "react-native";
-import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import type { Yacht } from "../Types/yacht";
 import { getMainImage } from "../utils/imageUtils";
@@ -34,7 +33,6 @@ interface YachtItemProps {
   onLoadEnd: () => void;
 }
 
-// Skeleton Component
 const SkeletonItem = () => {
   const animatedValue = new Animated.Value(0);
 
@@ -91,41 +89,28 @@ const YachtItem = memo(
     const [isLoading, setIsLoading] = useState(true);
     const imageSource = getMainImage(yacht.imageName);
 
-    const handlePress = async () => {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      onPress();
-    };
-
-    const handleLongPress = async () => {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    };
-
-    const handleLoadStart = () => {
+    const handleLoadStart = useCallback(() => {
       setIsLoading(true);
       onLoadStart();
-    };
+    }, [onLoadStart]);
 
-    const handleLoadEnd = () => {
+    const handleLoadEnd = useCallback(() => {
       setIsLoading(false);
       onLoadEnd();
-    };
+    }, [onLoadEnd]);
 
     return (
       <View style={styles.cardWrapper}>
         <TouchableOpacity
           style={styles.card}
-          onPress={handlePress}
-          onLongPress={handleLongPress}
-          delayLongPress={500}
+          onPress={onPress}
           activeOpacity={0.95}
         >
           <View style={styles.cardContent}>
             <View style={styles.imageSection}>
               {isLoading && (
                 <View style={styles.loadingContainer}>
-                  <Animated.View
-                    style={[styles.skeletonImage, { opacity: 0.5 }]}
-                  />
+                  <ActivityIndicator size="large" color="#666" />
                 </View>
               )}
               <Image
@@ -143,15 +128,19 @@ const YachtItem = memo(
             </View>
 
             <View style={styles.infoSection}>
-              <Text style={styles.name} numberOfLines={1}>
-                {yacht.name}
-              </Text>
+              <View style={styles.titleRow}>
+                <Text style={styles.name} numberOfLines={1}>
+                  {yacht.name}
+                </Text>
+                <Text style={styles.builder} numberOfLines={1}>
+                  {yacht.builtBy}
+                </Text>
+                <Text style={styles.year}>{yacht.delivered}</Text>
+              </View>
               <View style={styles.detailsRow}>
-                <Text style={styles.details}>{yacht.builtBy}</Text>
-                <Text style={styles.separator}>|</Text>
-                <Text style={styles.details}>{yacht.delivered}</Text>
-                <Text style={styles.separator}>|</Text>
                 <Text style={styles.details}>{yacht.length}m</Text>
+                <Text style={styles.separator}>|</Text>
+                <Text style={styles.details}>{yacht.topSpeed} knots</Text>
                 <Text style={styles.separator}>|</Text>
                 <Text style={styles.details}>{yacht.price || "N/A"}</Text>
                 {yacht.seizedBy && (
@@ -172,36 +161,36 @@ const YachtItem = memo(
 );
 
 const YachtList = forwardRef<FlatList, YachtListProps>(
-  ({ yachts, onYachtPress, isLoading = false }, ref) => {
+  ({ yachts, onYachtPress, isLoading }, ref) => {
     const [loadingImages, setLoadingImages] = useState<{
       [key: string]: boolean;
     }>({});
 
-    if (isLoading) {
-      return <SkeletonList />;
-    }
+    const handleLoadStart = useCallback((id: string) => {
+      setLoadingImages((prev) => ({ ...prev, [id]: true }));
+    }, []);
+
+    const handleLoadEnd = useCallback((id: string) => {
+      setLoadingImages((prev) => ({ ...prev, [id]: false }));
+    }, []);
 
     const renderYacht = useCallback(
-      ({ item }: { item: Yacht }) => {
-        const handleLoadStart = () =>
-          setLoadingImages((prev) => ({ ...prev, [item.id]: true }));
-
-        const handleLoadEnd = () =>
-          setLoadingImages((prev) => ({ ...prev, [item.id]: false }));
-
-        return (
-          <YachtItem
-            yacht={item}
-            onPress={() => onYachtPress(item)}
-            onLoadStart={handleLoadStart}
-            onLoadEnd={handleLoadEnd}
-          />
-        );
-      },
-      [onYachtPress],
+      ({ item }: { item: Yacht }) => (
+        <YachtItem
+          yacht={item}
+          onPress={() => onYachtPress(item)}
+          onLoadStart={() => handleLoadStart(item.id)}
+          onLoadEnd={() => handleLoadEnd(item.id)}
+        />
+      ),
+      [onYachtPress, handleLoadStart, handleLoadEnd],
     );
 
     const keyExtractor = useCallback((item: Yacht) => item.id, []);
+
+    if (isLoading) {
+      return <SkeletonList />;
+    }
 
     return (
       <FlatList
@@ -261,7 +250,7 @@ const styles = StyleSheet.create({
   seizedBadge: {
     position: "absolute",
     top: 12,
-    right: 12,
+    left: 12,
     backgroundColor: "#FF3B30",
     borderRadius: 12,
     padding: 6,
@@ -294,12 +283,27 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     backgroundColor: "#FFF",
   },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+    flexWrap: "wrap",
+  },
   name: {
     fontSize: 22,
     fontWeight: "600",
     color: "#1A1A1A",
-    marginBottom: 6,
+    marginRight: 8,
     letterSpacing: 0.5,
+  },
+  builder: {
+    fontSize: 14,
+    color: "#666",
+    marginRight: 8,
+  },
+  year: {
+    fontSize: 14,
+    color: "#666",
   },
   detailsRow: {
     flexDirection: "row",
@@ -321,7 +325,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-  // Skeleton styles
   skeletonImage: {
     width: "100%",
     height: 200,
