@@ -1,12 +1,16 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useCallback, FC } from "react";
 import {
   View,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  FlatList,
+  Platform,
+  Animated,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { RootStackParamList } from "../../App";
+import { RootStackParamList } from "../Types/navigation";
+import * as Haptics from "expo-haptics";
 import YachtList from "../components/YachtList";
 import { Yacht } from "../Types/yacht";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,6 +19,7 @@ import {
   SpeedometerIcon,
   PriceIcon,
   SeizedIcon,
+  IconProps,
 } from "../components/icons/CustomIcons";
 
 interface Props extends NativeStackScreenProps<RootStackParamList, "Home"> {
@@ -22,7 +27,50 @@ interface Props extends NativeStackScreenProps<RootStackParamList, "Home"> {
   isLoading: boolean;
 }
 
-const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
+interface FilterButtonProps {
+  isActive: boolean;
+  onPress: () => void;
+  icon: React.FC<IconProps>;
+}
+
+const FilterButton: FC<FilterButtonProps> = ({
+  isActive,
+  onPress,
+  icon: Icon,
+}) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.95,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      style={[styles.filterButton, isActive && styles.activeFilter]}
+      activeOpacity={0.7}
+    >
+      <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+        <Icon size={30} color={isActive ? "#000" : "#666"} />
+      </Animated.View>
+      {isActive && <View style={styles.underline} />}
+    </TouchableOpacity>
+  );
+};
+
+const HomeScreen: FC<Props> = ({ navigation, yachts, isLoading }) => {
   const [filters, setFilters] = useState({
     byLength: false,
     bySpeed: false,
@@ -30,17 +78,49 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
     bySeized: false,
   });
 
-  const handleYachtPress = (yacht: Yacht) => {
+  const listRef = useRef<FlatList>(null);
+  const searchButtonScale = useRef(new Animated.Value(1)).current;
+
+  const scrollToTop = () => {
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+  };
+
+  const handleFilterPress = async (filterFunction: () => void) => {
+    await Haptics.selectionAsync();
+    filterFunction();
+  };
+
+  const handleYachtPress = async (yacht: Yacht) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     navigation.navigate("Detail", { yacht });
   };
 
-  const parseNumericValue = (value: string): number => {
+  const handleSearchPress = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    navigation.navigate("Search", { yachts });
+  };
+
+  const handleSearchPressIn = () => {
+    Animated.spring(searchButtonScale, {
+      toValue: 0.95,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleSearchPressOut = () => {
+    Animated.spring(searchButtonScale, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const parseNumericValue = useCallback((value: string): number => {
     const numericString = value.replace(/[^\d.]/g, "");
     const parsedValue = parseFloat(numericString);
     return isNaN(parsedValue) ? 0 : parsedValue;
-  };
+  }, []);
 
-  const getFilteredYachts = () => {
+  const getFilteredYachts = useCallback(() => {
     let filtered = [...yachts];
 
     if (filters.byLength) {
@@ -74,140 +154,72 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
     }
 
     return filtered;
-  };
+  }, [yachts, filters, parseNumericValue]);
 
-  // Filter toggle handlers
-  const toggleLengthFilter = () => {
-    setFilters((prev) => ({
-      ...prev,
-      byLength: !prev.byLength,
-      bySpeed: false,
-      byPrice: false,
-      bySeized: false,
-    }));
-  };
-
-  const toggleSpeedFilter = () => {
-    setFilters((prev) => ({
-      ...prev,
-      byLength: false,
-      bySpeed: !prev.bySpeed,
-      byPrice: false,
-      bySeized: false,
-    }));
-  };
-
-  const togglePriceFilter = () => {
-    setFilters((prev) => ({
-      ...prev,
-      byLength: false,
-      bySpeed: false,
-      byPrice: !prev.byPrice,
-      bySeized: false,
-    }));
-  };
-
-  const toggleSeizedFilter = () => {
-    setFilters((prev) => ({
-      ...prev,
-      byLength: false,
-      bySpeed: false,
-      byPrice: false,
-      bySeized: !prev.bySeized,
-    }));
-  };
-
-  const currentRoute = navigation.getState().routes[navigation.getState().index].name;
-  const isFavoritesScreen = currentRoute === "Favorites";
+  const toggleFilter = useCallback((filterName: keyof typeof filters) => {
+    handleFilterPress(() => {
+      setFilters((prev) => {
+        const newFilters = {
+          byLength: false,
+          bySpeed: false,
+          byPrice: false,
+          bySeized: false,
+        };
+        newFilters[filterName] = !prev[filterName];
+        return newFilters;
+      });
+      scrollToTop();
+    });
+  }, []);
 
   return (
     <View style={styles.container}>
-      {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" />
-        </View>
-      ) : (
-        <>
-          <View style={styles.filterContainer}>
-            <TouchableOpacity
-              onPress={toggleLengthFilter}
-              style={[
-                styles.filterButton,
-                filters.byLength && styles.activeFilter,
-              ]}
-            >
-              <SizeIcon size={30} color={filters.byLength ? "#000" : "#666"} />
-              {filters.byLength && <View style={styles.underline} />}
-            </TouchableOpacity>
+      <View style={styles.filterContainer}>
+        <FilterButton
+          isActive={filters.byLength}
+          onPress={() => toggleFilter("byLength")}
+          icon={SizeIcon}
+        />
+        <FilterButton
+          isActive={filters.bySpeed}
+          onPress={() => toggleFilter("bySpeed")}
+          icon={SpeedometerIcon}
+        />
+        <FilterButton
+          isActive={filters.byPrice}
+          onPress={() => toggleFilter("byPrice")}
+          icon={PriceIcon}
+        />
+        <FilterButton
+          isActive={filters.bySeized}
+          onPress={() => toggleFilter("bySeized")}
+          icon={SeizedIcon}
+        />
+      </View>
 
-            <TouchableOpacity
-              onPress={toggleSpeedFilter}
-              style={[
-                styles.filterButton,
-                filters.bySpeed && styles.activeFilter,
-              ]}
-            >
-              <SpeedometerIcon
-                size={30}
-                color={filters.bySpeed ? "#000" : "#666"}
-              />
-              {filters.bySpeed && <View style={styles.underline} />}
-            </TouchableOpacity>
+      <YachtList
+        ref={listRef}
+        yachts={getFilteredYachts()}
+        onYachtPress={handleYachtPress}
+        isLoading={isLoading}
+      />
 
-            <TouchableOpacity
-              onPress={togglePriceFilter}
-              style={[
-                styles.filterButton,
-                filters.byPrice && styles.activeFilter,
-              ]}
-            >
-              <PriceIcon size={30} color={filters.byPrice ? "#000" : "#666"} />
-              {filters.byPrice && <View style={styles.underline} />}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={toggleSeizedFilter}
-              style={[
-                styles.filterButton,
-                filters.bySeized && styles.activeFilter,
-              ]}
-            >
-              <SeizedIcon
-                size={30}
-                color={filters.bySeized ? "#000" : "#666"}
-              />
-              {filters.bySeized && <View style={styles.underline} />}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => navigation.navigate("Favorites")}
-              style={[
-                styles.filterButton,
-                isFavoritesScreen && styles.activeFilter,
-              ]}
-            >
-              <Ionicons
-                name={isFavoritesScreen ? "heart" : "heart-outline"}
-                size={30}
-                color={isFavoritesScreen ? "#000" : "#666"}
-              />
-              {isFavoritesScreen && <View style={styles.underline} />}
-            </TouchableOpacity>
-          </View>
-
-          <YachtList
-            yachts={getFilteredYachts()}
-            onYachtPress={handleYachtPress}
-          />
-
-          <TouchableOpacity
-            style={styles.searchButton}
-            onPress={() => navigation.navigate("Search", { yachts })}
-          >
-            <Ionicons name="search" size={30} color="white" />
-          </TouchableOpacity>
-        </>
-      )}
+      <Animated.View
+        style={[
+          styles.searchButtonContainer,
+          { transform: [{ scale: searchButtonScale }] },
+        ]}
+      >
+        <TouchableOpacity
+          style={styles.searchButton}
+          onPress={handleSearchPress}
+          onPressIn={handleSearchPressIn}
+          onPressOut={handleSearchPressOut}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="search" size={30} color="white" />
+        </TouchableOpacity>
+      </Animated.View>
     </View>
   );
 };
@@ -230,6 +242,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#eee",
     marginTop: 2,
+    backgroundColor: "#fff",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   filterButton: {
     padding: 12,
@@ -248,24 +272,29 @@ const styles = StyleSheet.create({
     backgroundColor: "#000",
     borderRadius: 1,
   },
-  searchButton: {
+  searchButtonContainer: {
     position: "absolute",
     right: 20,
     bottom: 20,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  searchButton: {
     width: 56,
     height: 56,
     borderRadius: 28,
     backgroundColor: "black",
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
   },
 });
 

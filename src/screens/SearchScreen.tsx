@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { BlurView } from "expo-blur";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "../../App";
+import type { RootStackParamList } from "../Types/navigation";
 import type { Yacht } from "../Types/yacht";
 import { getMainImage } from "../utils/imageUtils";
 
@@ -29,7 +29,7 @@ const SearchScreen: React.FC<Props> = ({ navigation, route }) => {
     if (route.params?.yachts) {
       const initialYachts = route.params.yachts;
       setYachts(initialYachts);
-      setFilteredYachts([]); // Start with empty results until search
+      setFilteredYachts([]);
     }
   }, [route.params?.yachts]);
 
@@ -68,6 +68,7 @@ const SearchScreen: React.FC<Props> = ({ navigation, route }) => {
     <TouchableOpacity
       style={styles.resultItem}
       onPress={() => handleYachtPress(item)}
+      activeOpacity={0.7}
     >
       <Image
         source={getMainImage(item.imageName)}
@@ -75,13 +76,15 @@ const SearchScreen: React.FC<Props> = ({ navigation, route }) => {
         resizeMode="cover"
       />
       <View style={styles.yachtInfo}>
-        <Text style={styles.yachtName}>{item.name}</Text>
+        <Text style={styles.yachtName} numberOfLines={1}>
+          {item.name}
+        </Text>
         <Text style={styles.yachtDetails}>
           {item.length}m • Built {item.delivered}
         </Text>
-        <Text style={styles.yachtOwner}>
-          Owner: {item.owner}
-          {item.seizedBy && <Text style={styles.seizedText}> (Seized)</Text>}
+        <Text style={styles.yachtBuilder} numberOfLines={1}>
+          {item.builtBy}
+          {item.seizedBy && <Text style={styles.seizedText}> • Seized</Text>}
         </Text>
       </View>
     </TouchableOpacity>
@@ -172,6 +175,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.05)",
     borderRadius: 10,
     paddingHorizontal: 15,
+    fontSize: 16,
   },
   resultsContainer: {
     flex: 1,
@@ -182,7 +186,7 @@ const styles = StyleSheet.create({
   resultItem: {
     flexDirection: "row",
     backgroundColor: "#fff",
-    borderRadius: 10,
+    borderRadius: 12,
     marginBottom: 10,
     overflow: "hidden",
     ...Platform.select({
@@ -193,7 +197,7 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
       },
       android: {
-        elevation: 2,
+        elevation: 3,
       },
     }),
   },
@@ -203,30 +207,33 @@ const styles = StyleSheet.create({
   },
   yachtInfo: {
     flex: 1,
-    padding: 10,
+    padding: 12,
     justifyContent: "center",
   },
   yachtName: {
     fontSize: 18,
     fontWeight: "600",
     marginBottom: 4,
+    color: "#1a1a1a",
   },
   yachtDetails: {
     fontSize: 14,
     color: "#666",
     marginBottom: 4,
   },
-  yachtOwner: {
+  yachtBuilder: {
     fontSize: 14,
     color: "#666",
   },
   seizedText: {
     color: "#FF3B30",
+    fontWeight: "500",
   },
   noResults: {
     textAlign: "center",
     color: "#666",
     marginTop: 20,
+    fontSize: 16,
   },
 });
 
