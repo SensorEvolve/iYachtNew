@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+//Vet inte vad jag ska prova här.. Fattar inte. Kanske utan curly brackets?
 import type { RootStackParamList } from "../../App";
 import { getMainImage, getDetailImages } from "../utils/imageUtils";
 import { FavoritesButton } from "../components/FavoritesButton";
@@ -22,9 +23,7 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
   const { yacht } = route.params;
   const windowWidth = Dimensions.get("window").width;
   const [activeIndex, setActiveIndex] = useState(0);
-  const flatListRef = useRef<FlatList>(null);
-
-  // Get both main image and any additional detail images
+  const flatListRef = useRef<FlatList<number>>(null);
   const mainImage = getMainImage(yacht.imageName);
   const detailImages = getDetailImages(yacht.imageName);
   const images = detailImages.length > 0 ? detailImages : [mainImage];
@@ -49,12 +48,11 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
   };
 
   const goToImage = (index: number) => {
-    flatListRef.current?.scrollToOffset({
+    flatListRef.current?.scrollToOffset?.({
       offset: index * windowWidth,
       animated: true,
     });
   };
-
   return (
     <ScrollView style={styles.container}>
       {/* Image Section */}
@@ -176,9 +174,11 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
       {/* Ownership Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Ownership</Text>
-        <View style={styles.detailRow}>
+        <View style={[styles.detailRow, styles.ownerRow]}>
           <Text style={styles.label}>Owner</Text>
-          <Text style={styles.value}>{yacht.owner}</Text>
+          <Text style={[styles.value, styles.ownerValue]} numberOfLines={2}>
+            {yacht.owner}
+          </Text>
         </View>
         {yacht.price && (
           <View style={styles.detailRow}>
@@ -188,9 +188,7 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
         )}
         {yacht.seizedBy && (
           <View style={styles.seizedContainer}>
-            <Text style={styles.seizedText}>
-              🚫 Seized by {yacht.seizedBy}
-            </Text>
+            <Text style={styles.seizedText}>🚫 Seized by {yacht.seizedBy}</Text>
           </View>
         )}
       </View>
@@ -292,14 +290,23 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#F0F0F0",
   },
+  ownerRow: {
+    alignItems: "flex-start",
+    minHeight: 40,
+  },
   label: {
     fontSize: 16,
     color: "#666666",
+    flex: 0.3,
   },
   value: {
     fontSize: 16,
     color: "#000000",
     fontWeight: "500",
+  },
+  ownerValue: {
+    flex: 0.7,
+    textAlign: "right",
   },
   description: {
     fontSize: 16,
