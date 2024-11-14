@@ -47,6 +47,9 @@ const SearchScreen: React.FC<Props> = ({ navigation, route }) => {
         yacht.builtBy,
         yacht.owner,
         yacht.seizedBy,
+        yacht.shortInfo, // Added About text
+        yacht.exteriorDesigner, // Added exterior designer
+        yacht.interiorDesigner, // Added interior designer
       ].map((field) => (field || "").toLowerCase());
 
       const queryLower = query.toLowerCase();
