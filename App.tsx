@@ -9,6 +9,7 @@ import HomeScreen from "./src/screens/HomeScreen";
 import DetailScreen from "./src/screens/DetailScreen";
 import SearchScreen from "./src/screens/SearchScreen";
 import FavoritesScreen from "./src/screens/FavoritesScreen";
+import MapScreen from "./src/screens/MapScreen";
 import { TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Yacht } from "./src/Types/yacht";
@@ -32,13 +33,13 @@ const screenOptions: NativeStackNavigationOptions = {
   },
 };
 
-function AppNavigator({
+const AppNavigator = ({
   yachts,
   isLoading,
 }: {
   yachts: Yacht[];
   isLoading: boolean;
-}) {
+}) => {
   return (
     <Stack.Navigator initialRouteName="Home" screenOptions={screenOptions}>
       <Stack.Screen
@@ -53,33 +54,37 @@ function AppNavigator({
           },
           headerRight: () => (
             <TouchableOpacity
-              onPress={() => navigation.navigate("Favorites")}
-              style={{ marginRight: 15, opacity: 0 }} // Set opacity to 0 to hide it
+              onPress={() => navigation.navigate("Map")}
+              style={{ marginRight: 15 }}
             >
-              <Ionicons name="heart-outline" size={24} color="#000" />
+              <Ionicons name="globe-outline" size={24} color="#000" />
             </TouchableOpacity>
           ),
         })}
       >
         {(props) => (
-          <HomeScreen
-            {...props}
-            yachts={yachts}
-            isLoading={isLoading}
-            onFavoritesPress={() => props.navigation.navigate("Favorites")}
-          />
+          <HomeScreen {...props} yachts={yachts} isLoading={isLoading} />
         )}
       </Stack.Screen>
-      
+
+      <Stack.Screen
+        name="Map"
+        options={{
+          title: "Live Tracking",
+        }}
+      >
+        {(props) => <MapScreen {...props} yachts={yachts} />}
+      </Stack.Screen>
+
       <Stack.Screen
         name="Search"
         options={{
           title: "Search",
         }}
       >
-        {(props) => <SearchScreen {...props} />}
+        {(props) => <SearchScreen {...props} yachts={yachts} />}
       </Stack.Screen>
-      
+
       <Stack.Screen
         name="Detail"
         component={DetailScreen}
@@ -87,20 +92,18 @@ function AppNavigator({
           title: route.params.yacht.name,
         })}
       />
-      
+
       <Stack.Screen
         name="Favorites"
         options={{
           title: "Favorites",
         }}
       >
-        {(props) => (
-          <FavoritesScreen {...props} yachts={yachts} />
-        )}
+        {(props) => <FavoritesScreen {...props} yachts={yachts} />}
       </Stack.Screen>
     </Stack.Navigator>
   );
-}
+};
 
 export default function App() {
   const [yachts, setYachts] = useState<Yacht[]>([]);

@@ -5,4 +5,5 @@ export type RootStackParamList = {
   Detail: { yacht: Yacht };
   Search: { yachts: Yacht[] };
   Favorites: { yachts: Yacht[] };
+  Map: { yachtsId?: string } | undefined;
 };

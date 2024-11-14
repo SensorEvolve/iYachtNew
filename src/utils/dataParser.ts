@@ -40,11 +40,19 @@ export const loadYachtData = async (): Promise<Yacht[]> => {
         owner: values[CSV_COLUMNS.OWNER] || "",
         price: values[CSV_COLUMNS.PRICE] || "",
         seizedBy: values[CSV_COLUMNS.SEIZED_BY] || "",
-        imageName: values[CSV_COLUMNS.IMAGE_NAME] || 
+        imageName:
+          values[CSV_COLUMNS.IMAGE_NAME] ||
           values[CSV_COLUMNS.NAME].toLowerCase().replace(/\s+/g, "_"),
+        mmsi: values[CSV_COLUMNS.MMSI] || "",
         isFavorite: false,
       };
     });
+
+    const yachtsWithMMSI = yachts.filter((y) => y.mmsi);
+    console.log(
+      `Found ${yachtsWithMMSI.length} yachts with MMSI numbers:`,
+      yachtsWithMMSI.map((y) => ({ name: y.name, mmsi: y.mmsi })),
+    );
 
     console.log(`Successfully loaded ${yachts.length} yachts`);
     return yachts;

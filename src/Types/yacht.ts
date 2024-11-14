@@ -21,6 +21,7 @@ export interface Yacht {
   seizedBy: string;
   imageName: string;
   isFavorite?: boolean;
+  mmsi: string;
 }
 
 export interface YachtFilters {
@@ -56,6 +57,7 @@ export enum CSV_COLUMNS {
   PRICE = 17,
   SEIZED_BY = 18,
   IMAGE_NAME = 19,
+  MMSI = 20,
 }
 
 export interface FavoriteState {
