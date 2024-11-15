@@ -2,6 +2,10 @@ import { Asset } from "expo-asset";
 import * as FileSystem from "expo-file-system";
 import { Yacht, CSV_COLUMNS } from "../Types/yacht";
 
+// Version header constants
+const CSV_VERSION = "1.0.0";
+const CSV_HEADER_MARKER = "#VERSION";
+
 export const loadYachtData = async (): Promise<Yacht[]> => {
   try {
     const csvModule = require("../assets/super_yachts.csv");
@@ -9,15 +13,37 @@ export const loadYachtData = async (): Promise<Yacht[]> => {
     await asset.downloadAsync();
     const csvContent = await FileSystem.readAsStringAsync(asset.localUri!);
 
-    const lines = csvContent
+    // Split and clean lines
+    const allLines = csvContent
       .split("\n")
       .map((line) => line.trim())
-      .filter((line) => line.length > 0 && !line.includes("Name"));
+      .filter((line) => line.length > 0);
 
-    console.log(`Processing ${lines.length} yacht entries`);
+    // Check for version header
+    let dataLines = allLines;
+    if (allLines[0].startsWith(CSV_HEADER_MARKER)) {
+      const [marker, version, lastUpdated] = allLines[0].split(";");
+      console.log(`CSV Version: ${version}, Last Updated: ${lastUpdated}`);
+      dataLines = allLines.slice(1);
+    }
 
-    const yachts = lines.map((line, index) => {
+    // Filter out header row and empty lines
+    const validLines = dataLines.filter((line) => !line.includes("Name"));
+    console.log(`Processing ${validLines.length} yacht entries`);
+
+    // Track validation issues
+    const validationIssues: string[] = [];
+
+    const yachts = validLines.map((line, index) => {
       const values = line.split(";").map((v) => v.trim());
+
+      // Basic validation
+      if (!values[CSV_COLUMNS.NAME]) {
+        validationIssues.push(`Line ${index + 1}: Missing yacht name`);
+      }
+      if (!values[CSV_COLUMNS.LENGTH]) {
+        validationIssues.push(`Line ${index + 1}: Missing yacht length`);
+      }
 
       return {
         id: String(index),
@@ -48,11 +74,10 @@ export const loadYachtData = async (): Promise<Yacht[]> => {
       };
     });
 
-    const yachtsWithMMSI = yachts.filter((y) => y.mmsi);
-    console.log(
-      `Found ${yachtsWithMMSI.length} yachts with MMSI numbers:`,
-      yachtsWithMMSI.map((y) => ({ name: y.name, mmsi: y.mmsi })),
-    );
+    // Log any validation issues
+    if (validationIssues.length > 0) {
+      console.warn("Validation issues found:", validationIssues);
+    }
 
     console.log(`Successfully loaded ${yachts.length} yachts`);
     return yachts;
@@ -60,4 +85,9 @@ export const loadYachtData = async (): Promise<Yacht[]> => {
     console.error("Error loading yacht data:", error);
     throw error;
   }
+};
+
+// Helper function to generate version header for CSV
+export const generateCSVHeader = (): string => {
+  return `${CSV_HEADER_MARKER};${CSV_VERSION};${new Date().toISOString()}`;
 };
