@@ -1,10 +1,33 @@
 import { Asset } from "expo-asset";
 import * as FileSystem from "expo-file-system";
 import { Yacht, CSV_COLUMNS } from "../Types/yacht";
+import {
+  YachtLocation,
+  locationService,
+} from "../services/YachtLocationService";
 
-// Version header constants
-const CSV_VERSION = "1.0.0";
-const CSV_HEADER_MARKER = "#VERSION";
+const parseLocation = (
+  locationString: string,
+): { lat: number; lon: number } | null => {
+  if (!locationString) return null;
+
+  try {
+    const [lat, lon] = locationString.split(",").map(Number);
+    if (
+      !isNaN(lat) &&
+      !isNaN(lon) &&
+      lat >= -90 &&
+      lat <= 90 &&
+      lon >= -180 &&
+      lon <= 180
+    ) {
+      return { lat, lon };
+    }
+  } catch (error) {
+    console.warn("Error parsing location:", error);
+  }
+  return null;
+};
 
 export const loadYachtData = async (): Promise<Yacht[]> => {
   try {
@@ -13,36 +36,28 @@ export const loadYachtData = async (): Promise<Yacht[]> => {
     await asset.downloadAsync();
     const csvContent = await FileSystem.readAsStringAsync(asset.localUri!);
 
-    // Split and clean lines
-    const allLines = csvContent
+    const lines = csvContent
       .split("\n")
       .map((line) => line.trim())
-      .filter((line) => line.length > 0);
+      .filter((line) => line.length > 0 && !line.includes("Name"));
 
-    // Check for version header
-    let dataLines = allLines;
-    if (allLines[0].startsWith(CSV_HEADER_MARKER)) {
-      const [marker, version, lastUpdated] = allLines[0].split(";");
-      console.log(`CSV Version: ${version}, Last Updated: ${lastUpdated}`);
-      dataLines = allLines.slice(1);
-    }
+    console.log(`Processing ${lines.length} yacht entries`);
 
-    // Filter out header row and empty lines
-    const validLines = dataLines.filter((line) => !line.includes("Name"));
-    console.log(`Processing ${validLines.length} yacht entries`);
-
-    // Track validation issues
-    const validationIssues: string[] = [];
-
-    const yachts = validLines.map((line, index) => {
+    const locationUpdates: YachtLocation[] = [];
+    const yachts = lines.map((line, index) => {
       const values = line.split(";").map((v) => v.trim());
+      const mmsi = values[CSV_COLUMNS.MMSI];
+      const locationData = parseLocation(values[CSV_COLUMNS.LOCATION_LAT_LON]);
 
-      // Basic validation
-      if (!values[CSV_COLUMNS.NAME]) {
-        validationIssues.push(`Line ${index + 1}: Missing yacht name`);
-      }
-      if (!values[CSV_COLUMNS.LENGTH]) {
-        validationIssues.push(`Line ${index + 1}: Missing yacht length`);
+      // If we have valid location data, prepare it for the location service
+      if (mmsi && locationData) {
+        locationUpdates.push({
+          mmsi,
+          lat: locationData.lat,
+          lon: locationData.lon,
+          timestamp: new Date().toISOString(), // You might want to add a timestamp column in CSV
+          source: "CSV",
+        });
       }
 
       return {
@@ -69,25 +84,21 @@ export const loadYachtData = async (): Promise<Yacht[]> => {
         imageName:
           values[CSV_COLUMNS.IMAGE_NAME] ||
           values[CSV_COLUMNS.NAME].toLowerCase().replace(/\s+/g, "_"),
-        mmsi: values[CSV_COLUMNS.MMSI] || "",
-        isFavorite: false,
+        mmsi: mmsi || "",
       };
     });
 
-    // Log any validation issues
-    if (validationIssues.length > 0) {
-      console.warn("Validation issues found:", validationIssues);
+    // Initialize location service with CSV data
+    if (locationUpdates.length > 0) {
+      await locationService.initializeFromCSV(locationUpdates);
     }
 
     console.log(`Successfully loaded ${yachts.length} yachts`);
+    console.log(`Initialized ${locationUpdates.length} locations from CSV`);
+
     return yachts;
   } catch (error) {
     console.error("Error loading yacht data:", error);
     throw error;
   }
-};
-
-// Helper function to generate version header for CSV
-export const generateCSVHeader = (): string => {
-  return `${CSV_HEADER_MARKER};${CSV_VERSION};${new Date().toISOString()}`;
 };
