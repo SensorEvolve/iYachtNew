@@ -4,6 +4,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import {
   createNativeStackNavigator,
   NativeStackNavigationOptions,
+  NativeStackScreenProps,
 } from "@react-navigation/native-stack";
 import HomeScreen from "./src/screens/HomeScreen";
 import DetailScreen from "./src/screens/DetailScreen";
@@ -33,13 +34,12 @@ const screenOptions: NativeStackNavigationOptions = {
   },
 };
 
-const AppNavigator = ({
-  yachts,
-  isLoading,
-}: {
+interface AppNavigatorProps {
   yachts: Yacht[];
   isLoading: boolean;
-}) => {
+}
+
+const AppNavigator: React.FC<AppNavigatorProps> = ({ yachts, isLoading }) => {
   return (
     <Stack.Navigator initialRouteName="Home" screenOptions={screenOptions}>
       <Stack.Screen
@@ -62,7 +62,7 @@ const AppNavigator = ({
           ),
         })}
       >
-        {(props) => (
+        {(props: NativeStackScreenProps<RootStackParamList, "Home">) => (
           <HomeScreen {...props} yachts={yachts} isLoading={isLoading} />
         )}
       </Stack.Screen>
@@ -73,7 +73,9 @@ const AppNavigator = ({
           title: "Live Tracking",
         }}
       >
-        {(props) => <MapScreen {...props} yachts={yachts} />}
+        {(props: NativeStackScreenProps<RootStackParamList, "Map">) => (
+          <MapScreen {...props} yachts={yachts} />
+        )}
       </Stack.Screen>
 
       <Stack.Screen
@@ -82,16 +84,21 @@ const AppNavigator = ({
           title: "Search",
         }}
       >
-        {(props) => <SearchScreen {...props} yachts={yachts} />}
+        {(props: NativeStackScreenProps<RootStackParamList, "Search">) => (
+          <SearchScreen {...props} yachts={yachts} />
+        )}
       </Stack.Screen>
 
       <Stack.Screen
         name="Detail"
-        component={DetailScreen}
         options={({ route }) => ({
           title: route.params.yacht.name,
         })}
-      />
+      >
+        {(props: NativeStackScreenProps<RootStackParamList, "Detail">) => (
+          <DetailScreen {...props} />
+        )}
+      </Stack.Screen>
 
       <Stack.Screen
         name="Favorites"
@@ -99,7 +106,9 @@ const AppNavigator = ({
           title: "Favorites",
         }}
       >
-        {(props) => <FavoritesScreen {...props} yachts={yachts} />}
+        {(props: NativeStackScreenProps<RootStackParamList, "Favorites">) => (
+          <FavoritesScreen {...props} yachts={yachts} />
+        )}
       </Stack.Screen>
     </Stack.Navigator>
   );
