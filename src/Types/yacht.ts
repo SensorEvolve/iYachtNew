@@ -24,6 +24,17 @@ export interface Yacht {
   mmsi: string;
 }
 
+export interface YachtLocation {
+  mmsi: string;
+  lat: number;
+  lon: number;
+  speed: number;
+  course: number;
+  status?: number;
+  timestamp: string;
+  source: "MANUAL" | "AIS";
+}
+
 export interface YachtFilters {
   lengthMin?: number;
   lengthMax?: number;
@@ -58,6 +69,7 @@ export enum CSV_COLUMNS {
   SEIZED_BY = 18,
   IMAGE_NAME = 19,
   MMSI = 20,
+  LOCATION_LAT_LON = 21,
 }
 
 export interface FavoriteState {

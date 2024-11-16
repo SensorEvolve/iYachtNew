@@ -1,32 +1,35 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
-interface YachtLocation {
-  mmsi: string;
-  lat: number;
-  lon: number;
-  timestamp: string;
-  source: "CSV" | "AIS";
-}
+import { YachtLocation } from "../Types/yacht";
 
 interface LocationUpdate {
   lat: number;
   lon: number;
-  speed?: number;
-  course?: number;
+  speed: number;
+  course: number;
+  status?: number;
+}
+
+interface YachtHistory {
+  mmsi: string;
+  currentLocation: YachtLocation;
+  history: YachtLocation[];
 }
 
 const STORAGE_KEY = "@yacht_locations";
-const LOCATION_UPDATE_DEBOUNCE = 1000; // 1 second
+const HISTORY_KEY = "@yacht_history";
+const DETAILED_INTERVAL = 10 * 60 * 1000; // 10 minutes
+const HISTORICAL_RETENTION = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 class YachtLocationService {
   private locations: Map<string, YachtLocation> = new Map();
-  private updateQueue: Map<string, NodeJS.Timeout> = new Map();
+  private history: Map<string, YachtLocation[]> = new Map();
 
   constructor() {
     this.loadLocations();
+    this.loadHistory();
+    this.setupPeriodicCleanup();
   }
 
-  // Initialize locations from AsyncStorage
   private async loadLocations(): Promise<void> {
     try {
       const storedLocations = await AsyncStorage.getItem(STORAGE_KEY);
@@ -42,7 +45,24 @@ class YachtLocationService {
     }
   }
 
-  // Save locations to AsyncStorage
+  private async loadHistory(): Promise<void> {
+    try {
+      const storedHistory = await AsyncStorage.getItem(HISTORY_KEY);
+      if (storedHistory) {
+        const parsed = JSON.parse(storedHistory) as Record<
+          string,
+          YachtLocation[]
+        >;
+        Object.entries(parsed).forEach(([mmsi, positions]) => {
+          this.history.set(mmsi, positions);
+        });
+        console.log("Loaded history for yachts:", this.history.size);
+      }
+    } catch (error) {
+      console.error("Error loading history:", error);
+    }
+  }
+
   private async saveLocations(): Promise<void> {
     try {
       const locationArray = Array.from(this.locations.values());
@@ -53,63 +73,106 @@ class YachtLocationService {
     }
   }
 
-  // Initialize with CSV data
+  private async saveHistory(): Promise<void> {
+    try {
+      const historyObject = Object.fromEntries(this.history);
+      await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(historyObject));
+      console.log("Saved history for yachts:", this.history.size);
+    } catch (error) {
+      console.error("Error saving history:", error);
+    }
+  }
+
+  private setupPeriodicCleanup(): void {
+    setInterval(() => this.cleanupOldData(), 60 * 60 * 1000); // Every hour
+  }
+
+  private cleanupOldData(): void {
+    const now = Date.now();
+    let changed = false;
+
+    this.history.forEach((positions, mmsi) => {
+      const filteredPositions = positions.filter((pos) => {
+        const posTime = new Date(pos.timestamp).getTime();
+        return now - posTime <= HISTORICAL_RETENTION;
+      });
+
+      if (filteredPositions.length !== positions.length) {
+        changed = true;
+        this.history.set(mmsi, filteredPositions);
+      }
+    });
+
+    if (changed) {
+      this.saveHistory();
+    }
+  }
+
   public async initializeFromCSV(csvLocations: YachtLocation[]): Promise<void> {
     console.log("Initializing locations from CSV:", csvLocations.length);
     csvLocations.forEach((location) => {
-      // Only set if we don't have a newer location
-      const existing = this.locations.get(location.mmsi);
-      if (
-        !existing ||
-        new Date(existing.timestamp) < new Date(location.timestamp)
-      ) {
-        this.locations.set(location.mmsi, {
-          ...location,
-          source: "CSV",
-        });
-      }
+      this.locations.set(location.mmsi, {
+        ...location,
+        source: "MANUAL",
+      });
     });
     await this.saveLocations();
   }
 
-  // Update location from AIS
-  public updateLocation(mmsi: string, update: LocationUpdate): void {
-    // Clear any pending updates for this MMSI
-    const existingTimeout = this.updateQueue.get(mmsi);
-    if (existingTimeout) {
-      clearTimeout(existingTimeout);
-    }
+  private shouldStorePosition(
+    lastUpdate: string | undefined,
+    newTimestamp: string,
+  ): boolean {
+    if (!lastUpdate) return true;
 
-    // Create a new debounced update
-    const timeout = setTimeout(async () => {
-      const timestamp = new Date().toISOString();
-      const newLocation: YachtLocation = {
-        mmsi,
-        lat: update.lat,
-        lon: update.lon,
-        timestamp,
-        source: "AIS",
-      };
-
-      this.locations.set(mmsi, newLocation);
-      await this.saveLocations();
-      this.updateQueue.delete(mmsi);
-    }, LOCATION_UPDATE_DEBOUNCE);
-
-    this.updateQueue.set(mmsi, timeout);
+    const lastTime = new Date(lastUpdate).getTime();
+    const newTime = new Date(newTimestamp).getTime();
+    return newTime - lastTime >= DETAILED_INTERVAL;
   }
 
-  // Get all locations
+  public async updateLocation(
+    mmsi: string,
+    update: LocationUpdate,
+  ): Promise<void> {
+    const timestamp = new Date().toISOString();
+    const newLocation: YachtLocation = {
+      mmsi,
+      lat: update.lat,
+      lon: update.lon,
+      speed: update.speed,
+      course: update.course,
+      status: update.status,
+      timestamp,
+      source: "AIS",
+    };
+
+    // Update current location
+    this.locations.set(mmsi, newLocation);
+    await this.saveLocations();
+
+    // Update history if enough time has passed
+    const positions = this.history.get(mmsi) || [];
+    const lastPosition = positions[positions.length - 1];
+
+    if (this.shouldStorePosition(lastPosition?.timestamp, timestamp)) {
+      positions.push(newLocation);
+      this.history.set(mmsi, positions);
+      await this.saveHistory();
+    }
+  }
+
   public getLocations(): YachtLocation[] {
     return Array.from(this.locations.values());
   }
 
-  // Get location for specific yacht
   public getYachtLocation(mmsi: string): YachtLocation | undefined {
     return this.locations.get(mmsi);
   }
 
-  // Validate coordinates
+  public getYachtHistory(mmsi: string): YachtLocation[] {
+    return this.history.get(mmsi) || [];
+  }
+
   private isValidCoordinate(lat: number, lon: number): boolean {
     return (
       !isNaN(lat) &&
@@ -119,13 +182,6 @@ class YachtLocationService {
       lon >= -180 &&
       lon <= 180
     );
-  }
-
-  // Clear all stored locations
-  public async clearLocations(): Promise<void> {
-    this.locations.clear();
-    this.updateQueue.clear();
-    await AsyncStorage.removeItem(STORAGE_KEY);
   }
 }
 

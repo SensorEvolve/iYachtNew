@@ -8,11 +8,12 @@ import {
 
 const parseLocation = (
   locationString: string,
-): { lat: number; lon: number } | null => {
+): { lat: number; lon: number; speed?: number; course?: number } | null => {
   if (!locationString) return null;
-
   try {
-    const [lat, lon] = locationString.split(",").map(Number);
+    const [lat, lon, speed = 0, course = 0] = locationString
+      .split(",")
+      .map(Number);
     if (
       !isNaN(lat) &&
       !isNaN(lon) &&
@@ -21,7 +22,7 @@ const parseLocation = (
       lon >= -180 &&
       lon <= 180
     ) {
-      return { lat, lon };
+      return { lat, lon, speed, course };
     }
   } catch (error) {
     console.warn("Error parsing location:", error);
@@ -42,21 +43,22 @@ export const loadYachtData = async (): Promise<Yacht[]> => {
       .filter((line) => line.length > 0 && !line.includes("Name"));
 
     console.log(`Processing ${lines.length} yacht entries`);
-
     const locationUpdates: YachtLocation[] = [];
+
     const yachts = lines.map((line, index) => {
       const values = line.split(";").map((v) => v.trim());
       const mmsi = values[CSV_COLUMNS.MMSI];
       const locationData = parseLocation(values[CSV_COLUMNS.LOCATION_LAT_LON]);
 
-      // If we have valid location data, prepare it for the location service
       if (mmsi && locationData) {
         locationUpdates.push({
           mmsi,
           lat: locationData.lat,
           lon: locationData.lon,
-          timestamp: new Date().toISOString(), // You might want to add a timestamp column in CSV
-          source: "CSV",
+          speed: locationData.speed || 0,
+          course: locationData.course || 0,
+          timestamp: new Date().toISOString(),
+          source: "MANUAL", // Changed from "CSV" to 'MANUAL'
         });
       }
 
@@ -88,14 +90,14 @@ export const loadYachtData = async (): Promise<Yacht[]> => {
       };
     });
 
-    // Initialize location service with CSV data
     if (locationUpdates.length > 0) {
       await locationService.initializeFromCSV(locationUpdates);
+      console.log(
+        `Initialized ${locationUpdates.length} manual locations from CSV`,
+      );
     }
 
     console.log(`Successfully loaded ${yachts.length} yachts`);
-    console.log(`Initialized ${locationUpdates.length} locations from CSV`);
-
     return yachts;
   } catch (error) {
     console.error("Error loading yacht data:", error);
