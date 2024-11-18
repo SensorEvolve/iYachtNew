@@ -70,6 +70,7 @@ export enum CSV_COLUMNS {
   IMAGE_NAME = 19,
   MMSI = 20,
   LOCATION_LAT_LON = 21,
+  ENTRY_DATE = 22, // Added this new column
 }
 
 export interface FavoriteState {

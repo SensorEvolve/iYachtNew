@@ -17,21 +17,14 @@ import type { RootStackParamList } from "../Types/navigation";
 import type { Yacht } from "../Types/yacht";
 import { getMainImage } from "../utils/imageUtils";
 
-type Props = NativeStackScreenProps<RootStackParamList, "Search">;
+type Props = NativeStackScreenProps<RootStackParamList, "Search"> & {
+  yachts: Yacht[];
+};
 
-const SearchScreen: React.FC<Props> = ({ navigation, route }) => {
+const SearchScreen: React.FC<Props> = ({ navigation, route, yachts }) => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [yachts, setYachts] = useState<Yacht[]>([]);
   const [filteredYachts, setFilteredYachts] = useState<Yacht[]>([]);
   const [slideAnim] = useState(new Animated.Value(0));
-
-  useEffect(() => {
-    if (route.params?.yachts) {
-      const initialYachts = route.params.yachts;
-      setYachts(initialYachts);
-      setFilteredYachts([]);
-    }
-  }, [route.params?.yachts]);
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
@@ -47,9 +40,9 @@ const SearchScreen: React.FC<Props> = ({ navigation, route }) => {
         yacht.builtBy,
         yacht.owner,
         yacht.seizedBy,
-        yacht.shortInfo, // Added About text
-        yacht.exteriorDesigner, // Added exterior designer
-        yacht.interiorDesigner, // Added interior designer
+        yacht.shortInfo,
+        yacht.exteriorDesigner,
+        yacht.interiorDesigner,
       ].map((field) => (field || "").toLowerCase());
 
       const queryLower = query.toLowerCase();

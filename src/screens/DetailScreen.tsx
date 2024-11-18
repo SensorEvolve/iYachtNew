@@ -12,8 +12,7 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-//Vet inte vad jag ska prova här.. Fattar inte. Kanske utan curly brackets?
-import type { RootStackParamList } from "../../App";
+import { RootStackParamList } from "../Types/navigation"; // Changed import path
 import { getMainImage, getDetailImages } from "../utils/imageUtils";
 import { FavoritesButton } from "../components/FavoritesButton";
 
