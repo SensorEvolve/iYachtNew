@@ -1,10 +1,4 @@
-import React, {
-  useState,
-  useCallback,
-  memo,
-  forwardRef,
-  useEffect,
-} from "react";
+import React, { useState, useCallback, memo, forwardRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -17,8 +11,9 @@ import {
   Animated,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import type { Yacht } from "../Types/yacht";
+import { Yacht } from "../Types/yacht";
 import { getMainImage } from "../utils/imageUtils";
+import { locationService } from "../services/YachtLocationService";
 
 interface YachtListProps {
   yachts: Yacht[];
@@ -87,7 +82,18 @@ const SkeletonList = () => {
 const YachtItem = memo(
   ({ yacht, onPress, onLoadStart, onLoadEnd }: YachtItemProps) => {
     const [isLoading, setIsLoading] = useState(true);
+    const [location, setLocation] = useState<{ lat?: number; lon?: number }>();
     const imageSource = getMainImage(yacht.imageName);
+
+    useEffect(() => {
+      const loadLocation = async () => {
+        const loc = await locationService.getYachtLocation(yacht.mmsi);
+        if (loc) {
+          setLocation({ lat: loc.lat, lon: loc.lon });
+        }
+      };
+      loadLocation();
+    }, [yacht.mmsi]);
 
     const handleLoadStart = useCallback(() => {
       setIsLoading(true);
@@ -125,6 +131,11 @@ const YachtItem = memo(
                   <Ionicons name="warning" size={16} color="#fff" />
                 </View>
               )}
+              {location && (
+                <View style={styles.locationBadge}>
+                  <Ionicons name="location" size={14} color="#fff" />
+                </View>
+              )}
             </View>
 
             <View style={styles.infoSection}>
@@ -137,10 +148,6 @@ const YachtItem = memo(
                 </Text>
                 <Text style={styles.year}>{yacht.delivered}</Text>
               </View>
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
               <View style={styles.detailsRow}>
                 <Text style={styles.details}>{yacht.length}m</Text>
                 <Text style={styles.separator}>|</Text>
@@ -263,6 +270,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+  },
+  locationBadge: {
+    position: "absolute",
+    bottom: 12,
+    right: 12,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    borderRadius: 12,
+    padding: 6,
   },
   loadingContainer: {
     position: "absolute",

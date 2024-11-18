@@ -1,9 +1,18 @@
-import { Yacht } from "./yacht";
+import { Yacht } from './yacht';
 
 export type RootStackParamList = {
   Home: undefined;
-  Detail: { yacht: Yacht };
-  Search: { yachts: Yacht[] };
-  Favorites: { yachts: Yacht[] };
-  Map: { yachtsId?: string } | undefined;
+  Detail: {
+    yacht: Yacht;
+  };
+  Search: undefined;
+  Favorites: undefined;
 };
+
+export interface SelectedYacht {
+  yachtId: string | null;
+  position?: {
+    lat: number;
+    lon: number;
+  };
+}

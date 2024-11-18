@@ -1,45 +1,34 @@
 import React, { useEffect, useState } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NavigationContainer } from "@react-navigation/native";
-import {
-  createNativeStackNavigator,
-  NativeStackNavigationOptions,
-  NativeStackScreenProps,
-} from "@react-navigation/native-stack";
+import { createNativeStackNavigator, NativeStackNavigationOptions } from "@react-navigation/native-stack";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { StyleSheet, View, ActivityIndicator, Text, TouchableOpacity, Alert } from "react-native";
 import HomeScreen from "./src/screens/HomeScreen";
 import DetailScreen from "./src/screens/DetailScreen";
 import SearchScreen from "./src/screens/SearchScreen";
 import FavoritesScreen from "./src/screens/FavoritesScreen";
-import MapScreen from "./src/screens/MapScreen";
-import {
-  TouchableOpacity,
-  ActivityIndicator,
-  View,
-  StyleSheet,
-  Text,
-  LogBox,
-  Alert,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { Yacht } from "./src/Types/yacht";
+import MainLayout from "./src/components/MainLayout";
+import { FavoritesProvider } from "./src/contexts/FavoritesContext";
+import { YachtSelectionProvider } from "./src/contexts/YachtSelectionContext";
 import { loadYachtData } from "./src/utils/dataParser";
 import { RootStackParamList } from "./src/Types/navigation";
-import { FavoritesProvider } from "./src/contexts/FavoritesContext";
 import { locationService } from "./src/services/YachtLocationService";
+import { Yacht } from "./src/Types/yacht";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-const LOG_PREFIX = "🚀 [App]";
 
 const screenOptions: NativeStackNavigationOptions = {
   headerShadowVisible: false,
-  headerBackTitleVisible: false,
   headerStyle: {
-    backgroundColor: "#fff",
+    backgroundColor: 'transparent',
   },
+  headerTransparent: true,
+  headerBlurEffect: 'regular' as 'regular',
   headerTitleStyle: {
     fontSize: 28,
-    fontWeight: "600",
-    color: "#2B2B2B",
+    fontWeight: '600',
+    color: '#2B2B2B',
   },
 };
 
@@ -50,13 +39,7 @@ const LoadingScreen = () => (
   </View>
 );
 
-const ErrorScreen = ({
-  error,
-  retry,
-}: {
-  error: string;
-  retry: () => void;
-}) => (
+const ErrorScreen = ({ error, retry }: { error: string; retry: () => void }) => (
   <View style={styles.centerContainer}>
     <Text style={styles.errorText}>Error: {error}</Text>
     <TouchableOpacity style={styles.retryButton} onPress={retry}>
@@ -65,100 +48,29 @@ const ErrorScreen = ({
   </View>
 );
 
-interface AppNavigatorProps {
-  yachts: Yacht[];
-  isLoading: boolean;
-}
-
-const AppNavigator: React.FC<AppNavigatorProps> = ({ yachts, isLoading }) => {
-  return (
-    <Stack.Navigator initialRouteName="Home" screenOptions={screenOptions}>
-      <Stack.Screen
-        name="Home"
-        options={({ navigation }) => ({
-          title: "SUPER YACHTS",
-          headerTitleStyle: {
-            fontSize: 28,
-            fontWeight: "700",
-            color: "#2B2B2B",
-            letterSpacing: 0.5,
-          },
-          headerRight: () => (
-            <TouchableOpacity
-              onPress={() => navigation.navigate("Map", {})}
-              style={{ marginRight: 15 }}
-            >
-              <Ionicons name="globe-outline" size={24} color="#000" />
-            </TouchableOpacity>
-          ),
-        })}
-      >
-        {(props: NativeStackScreenProps<RootStackParamList, "Home">) => (
-          <HomeScreen {...props} yachts={yachts} isLoading={isLoading} />
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen name="Map" options={{ title: "Live Tracking" }}>
-        {(props: NativeStackScreenProps<RootStackParamList, "Map">) => (
-          <MapScreen {...props} yachts={yachts} />
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen name="Search" options={{ title: "Search" }}>
-        {(props: NativeStackScreenProps<RootStackParamList, "Search">) => (
-          <SearchScreen {...props} yachts={yachts} />
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen
-        name="Detail"
-        options={({ route }) => ({
-          title: route.params.yacht.name,
-        })}
-      >
-        {(props: NativeStackScreenProps<RootStackParamList, "Detail">) => (
-          <DetailScreen {...props} />
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen name="Favorites" options={{ title: "Favorites" }}>
-        {(props: NativeStackScreenProps<RootStackParamList, "Favorites">) => (
-          <FavoritesScreen {...props} yachts={yachts} />
-        )}
-      </Stack.Screen>
-    </Stack.Navigator>
-  );
-};
-
 export default function App() {
   const [yachts, setYachts] = useState<Yacht[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const loadAppData = async () => {
-    console.log(`${LOG_PREFIX} Starting app initialization`);
     setIsLoading(true);
     setError(null);
 
     try {
       await locationService.waitForInitialization();
-      console.log(`${LOG_PREFIX} Location service initialized`);
-
       const loadedYachts = await loadYachtData();
-      console.log(`${LOG_PREFIX} Loaded ${loadedYachts.length} yachts`);
       setYachts(loadedYachts);
     } catch (err) {
-      console.error(`${LOG_PREFIX} Initialization error:`, err);
-      const errorMessage =
-        err instanceof Error ? err.message : "An unexpected error occurred";
+      const errorMessage = err instanceof Error ? err.message : "An unexpected error occurred";
       setError(errorMessage);
       Alert.alert(
         "Loading Error",
         "Failed to load yacht data. Would you like to retry?",
         [
           { text: "Cancel", style: "cancel" },
-          { text: "Retry", onPress: () => loadAppData() },
-        ],
+          { text: "Retry", onPress: () => loadAppData() }
+        ]
       );
     } finally {
       setIsLoading(false);
@@ -167,9 +79,6 @@ export default function App() {
 
   useEffect(() => {
     loadAppData();
-    return () => {
-      // Cleanup if needed
-    };
   }, []);
 
   if (error) {
@@ -182,16 +91,56 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <FavoritesProvider>
-        <NavigationContainer>
-          <AppNavigator yachts={yachts} isLoading={isLoading} />
-        </NavigationContainer>
-      </FavoritesProvider>
+      <GestureHandlerRootView style={styles.container}>
+        <YachtSelectionProvider>
+          <FavoritesProvider>
+            <NavigationContainer>
+              <MainLayout yachts={yachts}>
+                <Stack.Navigator screenOptions={screenOptions}>
+                  <Stack.Screen
+                    name="Home"
+                    options={{ title: "SUPER YACHTS" }}
+                  >
+                    {(props) => (
+                      <HomeScreen {...props} yachts={yachts} isLoading={isLoading} />
+                    )}
+                  </Stack.Screen>
+
+                  <Stack.Screen
+                    name="Detail"
+                    options={({ route }) => ({
+                      title: route.params.yacht.name,
+                    })}
+                    component={DetailScreen}
+                  />
+
+                  <Stack.Screen
+                    name="Search"
+                    options={{ title: "Search" }}
+                  >
+                    {(props) => <SearchScreen {...props} yachts={yachts} />}
+                  </Stack.Screen>
+
+                  <Stack.Screen
+                    name="Favorites"
+                    options={{ title: "Favorites" }}
+                  >
+                    {(props) => <FavoritesScreen {...props} yachts={yachts} />}
+                  </Stack.Screen>
+                </Stack.Navigator>
+              </MainLayout>
+            </NavigationContainer>
+          </FavoritesProvider>
+        </YachtSelectionProvider>
+      </GestureHandlerRootView>
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   centerContainer: {
     flex: 1,
     justifyContent: "center",

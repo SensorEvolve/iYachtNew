@@ -38,6 +38,7 @@
     "react-native-webview": "13.12.2"
   },
   "devDependencies": {
+    "@react-native-community/cli": "latest",
     "@babel/core": "^7.20.0",
     "@types/react": "^18.3.12",
     "tsx": "^4.19.2"
