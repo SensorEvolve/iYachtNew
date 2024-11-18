@@ -137,6 +137,10 @@ const YachtItem = memo(
                 </Text>
                 <Text style={styles.year}>{yacht.delivered}</Text>
               </View>
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
               <View style={styles.detailsRow}>
                 <Text style={styles.details}>{yacht.length}m</Text>
                 <Text style={styles.separator}>|</Text>
