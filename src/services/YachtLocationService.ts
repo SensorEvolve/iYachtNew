@@ -7,59 +7,75 @@ interface LocationUpdate {
   speed: number;
   course: number;
   status?: number;
-}
-
-interface YachtHistory {
-  mmsi: string;
-  currentLocation: YachtLocation;
-  history: YachtLocation[];
+  timestamp?: string;
 }
 
 const STORAGE_KEY = "@yacht_locations";
-const HISTORY_KEY = "@yacht_history";
-const DETAILED_INTERVAL = 10 * 60 * 1000; // 10 minutes
-const HISTORICAL_RETENTION = 7 * 24 * 60 * 60 * 1000; // 7 days
+const LOG_PREFIX = "🛥️ [LocationService]";
 
 class YachtLocationService {
   private locations: Map<string, YachtLocation> = new Map();
-  private history: Map<string, YachtLocation[]> = new Map();
+  private initialized: boolean = false;
+  private initializationPromise: Promise<void>;
 
   constructor() {
-    this.loadLocations();
-    this.loadHistory();
-    this.setupPeriodicCleanup();
+    console.log(`${LOG_PREFIX} Service created`);
+    this.initializationPromise = this.initialize();
+  }
+
+  private async initialize(): Promise<void> {
+    try {
+      console.log(`${LOG_PREFIX} Starting initialization`);
+      await this.loadLocations();
+      this.initialized = true;
+      console.log(`${LOG_PREFIX} Initialization complete`);
+    } catch (error) {
+      console.error(`${LOG_PREFIX} Initialization failed:`, error);
+      throw error;
+    }
+  }
+
+  public async waitForInitialization(): Promise<void> {
+    await this.initializationPromise;
   }
 
   private async loadLocations(): Promise<void> {
     try {
+      console.log(`${LOG_PREFIX} Loading stored locations`);
       const storedLocations = await AsyncStorage.getItem(STORAGE_KEY);
-      if (storedLocations) {
-        const parsed = JSON.parse(storedLocations) as YachtLocation[];
-        parsed.forEach((location) => {
-          this.locations.set(location.mmsi, location);
-        });
-        console.log("Loaded stored locations:", this.locations.size);
-      }
-    } catch (error) {
-      console.error("Error loading locations:", error);
-    }
-  }
 
-  private async loadHistory(): Promise<void> {
-    try {
-      const storedHistory = await AsyncStorage.getItem(HISTORY_KEY);
-      if (storedHistory) {
-        const parsed = JSON.parse(storedHistory) as Record<
-          string,
-          YachtLocation[]
-        >;
-        Object.entries(parsed).forEach(([mmsi, positions]) => {
-          this.history.set(mmsi, positions);
-        });
-        console.log("Loaded history for yachts:", this.history.size);
+      if (storedLocations) {
+        const parsed = JSON.parse(storedLocations);
+        console.log(
+          `${LOG_PREFIX} Parsed data type:`,
+          Array.isArray(parsed) ? "array" : typeof parsed,
+        );
+
+        if (Array.isArray(parsed)) {
+          parsed.forEach((location) => {
+            // Ensure status is present for manual locations
+            if (location.source === "MANUAL" && !location.status) {
+              location.status = 5; // Set moored status
+            }
+            this.locations.set(location.mmsi, location);
+          });
+
+          const manualCount = parsed.filter(loc => loc.source === "MANUAL").length;
+          const aisCount = parsed.filter(loc => loc.source === "AIS").length;
+
+          console.log(`${LOG_PREFIX} ✅ Loaded ${this.locations.size} stored locations:`);
+          console.log(`${LOG_PREFIX} Manual: ${manualCount}`);
+          console.log(`${LOG_PREFIX} AIS: ${aisCount}`);
+        } else {
+          console.warn(
+            `${LOG_PREFIX} Stored data is not an array, initializing empty locations`,
+          );
+          this.locations = new Map();
+        }
       }
     } catch (error) {
-      console.error("Error loading history:", error);
+      console.error(`${LOG_PREFIX} ❌ Error loading locations:`, error);
+      this.locations = new Map();
     }
   }
 
@@ -67,97 +83,123 @@ class YachtLocationService {
     try {
       const locationArray = Array.from(this.locations.values());
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(locationArray));
-      console.log("Saved locations:", locationArray.length);
+
+      const manualCount = locationArray.filter(
+        (loc) => loc.source === "MANUAL",
+      ).length;
+      const aisCount = locationArray.filter(
+        (loc) => loc.source === "AIS",
+      ).length;
+
+      console.log(`${LOG_PREFIX} ✅ Saved ${locationArray.length} locations:`);
+      console.log(`${LOG_PREFIX} Manual: ${manualCount}`);
+      console.log(`${LOG_PREFIX} AIS: ${aisCount}`);
     } catch (error) {
-      console.error("Error saving locations:", error);
-    }
-  }
-
-  private async saveHistory(): Promise<void> {
-    try {
-      const historyObject = Object.fromEntries(this.history);
-      await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(historyObject));
-      console.log("Saved history for yachts:", this.history.size);
-    } catch (error) {
-      console.error("Error saving history:", error);
-    }
-  }
-
-  private setupPeriodicCleanup(): void {
-    setInterval(() => this.cleanupOldData(), 60 * 60 * 1000); // Every hour
-  }
-
-  private cleanupOldData(): void {
-    const now = Date.now();
-    let changed = false;
-
-    this.history.forEach((positions, mmsi) => {
-      const filteredPositions = positions.filter((pos) => {
-        const posTime = new Date(pos.timestamp).getTime();
-        return now - posTime <= HISTORICAL_RETENTION;
-      });
-
-      if (filteredPositions.length !== positions.length) {
-        changed = true;
-        this.history.set(mmsi, filteredPositions);
-      }
-    });
-
-    if (changed) {
-      this.saveHistory();
+      console.error(`${LOG_PREFIX} ❌ Error saving locations:`, error);
     }
   }
 
   public async initializeFromCSV(csvLocations: YachtLocation[]): Promise<void> {
-    console.log("Initializing locations from CSV:", csvLocations.length);
+    console.log(
+      `${LOG_PREFIX} Initializing ${csvLocations.length} manual locations from CSV`,
+    );
+
     csvLocations.forEach((location) => {
-      this.locations.set(location.mmsi, {
+      if (!location.timestamp) {
+        console.warn(
+          `${LOG_PREFIX} Missing timestamp for ${location.mmsi} in CSV`,
+        );
+        return;
+      }
+
+      const existingLocation = this.locations.get(location.mmsi);
+      const csvLocation = {
         ...location,
-        source: "MANUAL",
-      });
+        source: "MANUAL" as const,
+        status: location.status || 5, // Ensure status is set
+      };
+
+      if (!existingLocation) {
+        this.locations.set(location.mmsi, csvLocation);
+        console.log(
+          `${LOG_PREFIX} Added manual position for ${location.mmsi} from CSV (${location.timestamp})`,
+        );
+      } else if (existingLocation.source === "MANUAL") {
+        const existingDate = new Date(existingLocation.timestamp);
+        const newDate = new Date(location.timestamp);
+
+        if (newDate > existingDate) {
+          this.locations.set(location.mmsi, csvLocation);
+          console.log(
+            `${LOG_PREFIX} Updated manual position for ${location.mmsi} from CSV (${location.timestamp})`,
+          );
+        } else {
+          console.log(
+            `${LOG_PREFIX} Keeping existing manual position for ${location.mmsi} (${existingLocation.timestamp})`,
+          );
+        }
+      } else {
+        console.log(
+          `${LOG_PREFIX} Keeping existing ${existingLocation.source} position for ${location.mmsi} (${existingLocation.timestamp})`,
+        );
+      }
     });
+
     await this.saveLocations();
-  }
-
-  private shouldStorePosition(
-    lastUpdate: string | undefined,
-    newTimestamp: string,
-  ): boolean {
-    if (!lastUpdate) return true;
-
-    const lastTime = new Date(lastUpdate).getTime();
-    const newTime = new Date(newTimestamp).getTime();
-    return newTime - lastTime >= DETAILED_INTERVAL;
   }
 
   public async updateLocation(
     mmsi: string,
     update: LocationUpdate,
   ): Promise<void> {
-    const timestamp = new Date().toISOString();
-    const newLocation: YachtLocation = {
-      mmsi,
-      lat: update.lat,
-      lon: update.lon,
-      speed: update.speed,
-      course: update.course,
-      status: update.status,
-      timestamp,
-      source: "AIS",
-    };
+    if (!this.isValidCoordinate(update.lat, update.lon)) {
+      console.warn(`${LOG_PREFIX} Invalid coordinates for ${mmsi}:`, update);
+      return;
+    }
 
-    // Update current location
-    this.locations.set(mmsi, newLocation);
-    await this.saveLocations();
+    const currentLocation = this.locations.get(mmsi);
 
-    // Update history if enough time has passed
-    const positions = this.history.get(mmsi) || [];
-    const lastPosition = positions[positions.length - 1];
+    // Never update if current position is MANUAL
+    if (currentLocation?.source === "MANUAL") {
+      console.log(
+        `${LOG_PREFIX} Keeping manual position for ${mmsi} from ${currentLocation.timestamp}`,
+      );
+      return;
+    }
 
-    if (this.shouldStorePosition(lastPosition?.timestamp, timestamp)) {
-      positions.push(newLocation);
-      this.history.set(mmsi, positions);
-      await this.saveHistory();
+    const newTimestamp = update.timestamp || new Date().toISOString();
+
+    // Only update if no existing location or new AIS data is newer
+    if (
+      !currentLocation ||
+      new Date(newTimestamp) > new Date(currentLocation.timestamp)
+    ) {
+      const newLocation: YachtLocation = {
+        mmsi,
+        lat: update.lat,
+        lon: update.lon,
+        speed: update.speed,
+        course: update.course,
+        status: update.status,
+        timestamp: newTimestamp,
+        source: "AIS",
+      };
+
+      this.locations.set(mmsi, newLocation);
+      console.log(
+        `${LOG_PREFIX} Updated AIS position for ${mmsi} (${newTimestamp})`,
+      );
+
+      await this.saveLocations();
+    } else {
+      const timeDiff = Math.round(
+        (new Date(currentLocation.timestamp).getTime() -
+          new Date(newTimestamp).getTime()) /
+          (1000 * 60),
+      );
+      console.log(
+        `${LOG_PREFIX} Keeping ${currentLocation.source} position for ${mmsi} (${timeDiff} minutes newer)`,
+      );
     }
   }
 
@@ -169,10 +211,6 @@ class YachtLocationService {
     return this.locations.get(mmsi);
   }
 
-  public getYachtHistory(mmsi: string): YachtLocation[] {
-    return this.history.get(mmsi) || [];
-  }
-
   private isValidCoordinate(lat: number, lon: number): boolean {
     return (
       !isNaN(lat) &&
@@ -182,6 +220,28 @@ class YachtLocationService {
       lon >= -180 &&
       lon <= 180
     );
+  }
+
+  public getLocationStatistics(): {
+    total: number;
+    manual: number;
+    ais: number;
+    lastUpdate: string | null;
+  } {
+    const locations = Array.from(this.locations.values());
+    const lastUpdate =
+      locations.length > 0
+        ? new Date(
+            Math.max(...locations.map((l) => new Date(l.timestamp).getTime())),
+          ).toISOString()
+        : null;
+
+    return {
+      total: locations.length,
+      manual: locations.filter((l) => l.source === "MANUAL").length,
+      ais: locations.filter((l) => l.source === "AIS").length,
+      lastUpdate,
+    };
   }
 }
 
