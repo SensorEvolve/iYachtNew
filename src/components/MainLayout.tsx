@@ -1,7 +1,8 @@
-import React, { useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import BottomSheet, {
-  BottomSheetBackdrop
+  BottomSheetBackdrop,
+  BottomSheetProps
 } from '@gorhom/bottom-sheet';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -13,11 +14,11 @@ import { Yacht } from '../Types/yacht';
 import { RootStackParamList } from '../Types/navigation';
 
 interface MainLayoutProps {
-  children: React.ReactNode;
   yachts: Yacht[];
+  children?: React.ReactNode;
 }
 
-const MainLayout: React.FC<MainLayoutProps> = ({ children, yachts }) => {
+const MainLayout: React.FC<MainLayoutProps> = ({ yachts, children }) => {
   const bottomSheetRef = useRef<BottomSheet>(null);
   const { selectedYacht, setSelectedYacht } = useYachtSelection();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -34,12 +35,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, yachts }) => {
   const initialSnapPoint = useMemo(() => {
     if (route.name === 'Detail') return 2;
     return 1;
-  }, [route.name]);
-
-  useEffect(() => {
-    if (route.name === 'Detail') {
-      bottomSheetRef.current?.snapToIndex(2);
-    }
   }, [route.name]);
 
   const handleSheetChange = useCallback((index: number) => {
@@ -61,11 +56,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, yachts }) => {
   );
 
   const handleYachtSelect = useCallback((yacht: Yacht) => {
-    // Use YachtLocation to get position
     setSelectedYacht({
       yachtId: yacht.id,
     });
-
     if (route.name === 'Detail') {
       navigation.setParams({ yacht });
     }
@@ -77,7 +70,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, yachts }) => {
         <MapScreen
           yachts={yachts}
           onYachtSelect={handleYachtSelect}
-          selectedYachtId={selectedYacht.yachtId}
+          selectedYachtId={selectedYacht?.yachtId}
         />
       </View>
 

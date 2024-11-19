@@ -2,17 +2,15 @@ import { Yacht } from './yacht';
 
 export type RootStackParamList = {
   Home: undefined;
-  Detail: {
-    yacht: Yacht;
-  };
+  Map: undefined;
+  Detail: { yacht: Yacht };
   Search: undefined;
   Favorites: undefined;
 };
 
-export interface SelectedYacht {
-  yachtId: string | null;
-  position?: {
-    lat: number;
-    lon: number;
+export type NavigationProps = {
+  navigation: {
+    navigate: (screen: keyof RootStackParamList, params?: any) => void;
+    goBack: () => void;
   };
-}
+};

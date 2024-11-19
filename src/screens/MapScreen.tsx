@@ -1,29 +1,22 @@
 import React, { useState, useRef, useEffect } from "react";
 import { View, StyleSheet, ActivityIndicator } from "react-native";
 import WebView from "react-native-webview";
+import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { RootStackParamList } from "../Types/navigation";
 import { Yacht, YachtLocation } from "../Types/yacht";
 import WebSocketHandler from "../components/WebSocketHandler";
 import { locationService } from "../services/YachtLocationService";
-import { useYachtSelection } from "../contexts/YachtSelectionContext";
-import { Platform } from "react-native";
 
-interface MapScreenProps {
+type Props = NativeStackScreenProps<RootStackParamList, "Map"> & {
   yachts: Yacht[];
-  onYachtSelect?: (yacht: Yacht) => void;
-  selectedYachtId?: string | null;
-}
-
-interface MapLocations {
-  [mmsi: string]: YachtLocation;
-}
+};
 
 const LOG_PREFIX = "🗺️ [MapScreen]";
 
-const MapScreen: React.FC<MapScreenProps> = ({ yachts, onYachtSelect, selectedYachtId }) => {
-  const [locations, setLocations] = useState<MapLocations>({});
+const MapScreen: React.FC<Props> = ({ yachts }) => {
+  const [locations, setLocations] = useState<{ [mmsi: string]: YachtLocation }>({});
   const [isLoading, setIsLoading] = useState(true);
   const webViewRef = useRef<WebView>(null);
-  const { setSelectedYacht } = useYachtSelection();
 
   useEffect(() => {
     const loadInitialLocations = async () => {
@@ -32,13 +25,24 @@ const MapScreen: React.FC<MapScreenProps> = ({ yachts, onYachtSelect, selectedYa
         const storedLocations = locationService.getLocations();
         console.log(`${LOG_PREFIX} Loading ${storedLocations.length} stored locations`);
 
-        const initialLocations: MapLocations = {};
+        const initialLocations: { [mmsi: string]: YachtLocation } = {};
         storedLocations.forEach((loc) => {
           initialLocations[loc.mmsi] = loc;
         });
 
         setLocations(initialLocations);
-        updateMapLocations(initialLocations);
+
+        if (webViewRef.current) {
+          try {
+            const updateScript = `
+              window.updateLocations(${JSON.stringify(initialLocations)});
+              true;
+            `;
+            webViewRef.current.injectJavaScript(updateScript);
+          } catch (error) {
+            console.warn(`${LOG_PREFIX} Failed to inject initial locations:`, error);
+          }
+        }
       } catch (error) {
         console.error(`${LOG_PREFIX} Error loading initial locations:`, error);
       }
@@ -47,65 +51,32 @@ const MapScreen: React.FC<MapScreenProps> = ({ yachts, onYachtSelect, selectedYa
     loadInitialLocations();
   }, []);
 
-  useEffect(() => {
-    if (selectedYachtId) {
-      const yacht = yachts.find(y => y.id === selectedYachtId);
-      const location = yacht ? locations[yacht.mmsi] : null;
-      if (location && webViewRef.current) {
-        const selectScript = `
-          window.selectYacht('${yacht.mmsi}', ${location.lat}, ${location.lon});
-          true;
-        `;
-        webViewRef.current.injectJavaScript(selectScript);
-      }
-    }
-  }, [selectedYachtId, yachts, locations]);
+  const handleLocationUpdate = async (mmsi: string, location: YachtLocation) => {
+    try {
+      await locationService.updateLocation(mmsi, location);
 
-  const handleLocationUpdate = async (mmsi: string, update: YachtLocation) => {
-    const yacht = yachts.find(y => y.mmsi === mmsi);
-    if (!yacht) return;
-
-    const updatedLocation = await locationService.updateLocation(mmsi, update);
-    if (updatedLocation) {
-      setLocations(prev => {
-        const newLocations: MapLocations = {
+      setLocations((prev) => {
+        const newLocations = {
           ...prev,
-          [mmsi]: updatedLocation
+          [mmsi]: location
         };
-        updateMapLocations(newLocations);
+
+        if (webViewRef.current) {
+          try {
+            const updateScript = `
+              window.updateLocations(${JSON.stringify(newLocations)});
+              true;
+            `;
+            webViewRef.current.injectJavaScript(updateScript);
+          } catch (error) {
+            console.warn(`${LOG_PREFIX} Failed to update WebView:`, error);
+          }
+        }
+
         return newLocations;
       });
-    }
-  };
-
-  const updateMapLocations = (newLocations: MapLocations) => {
-    if (webViewRef.current) {
-      const updateScript = `
-        window.updateLocations('${JSON.stringify(newLocations)}');
-        true;
-      `;
-      webViewRef.current.injectJavaScript(updateScript);
-    }
-  };
-
-  const handleWebViewMessage = (event: any) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === "yacht_selected") {
-        const yacht = yachts.find(y => y.mmsi === data.mmsi);
-        const location = locations[data.mmsi];
-        if (yacht && location && onYachtSelect) {
-          onYachtSelect(yacht);
-          setSelectedYacht({
-            yachtId: yacht.id,
-            position: { lat: location.lat, lon: location.lon }
-          });
-        }
-      } else if (event.nativeEvent.data === "mapReady") {
-        setIsLoading(false);
-      }
     } catch (error) {
-      console.error(`${LOG_PREFIX} Error handling message:`, error);
+      console.error(`${LOG_PREFIX} Location update failed:`, error);
     }
   };
 const getMapHTML = () => `
@@ -117,12 +88,7 @@ const getMapHTML = () => `
         <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
         <style>
           body { margin: 0; padding: 0; }
-          #map {
-            height: 100vh;
-            width: 100vw;
-            background: #000;
-            ${Platform.OS === 'ios' ? '-webkit-user-select: none;' : ''}
-          }
+          #map { height: 100vh; width: 100vw; background: #000; }
           .yacht-icon {
             animation: pulse 2s infinite;
             transform-origin: center;
@@ -131,10 +97,6 @@ const getMapHTML = () => `
           .yacht-icon-motor { --yacht-color: #00ff00; }
           .yacht-icon-sailing { --yacht-color: #00ffff; }
           .yacht-icon-seized { --yacht-color: #ff0000; }
-          .selected-yacht {
-            transform: scale(1.2);
-            filter: drop-shadow(0 0 15px var(--yacht-color));
-          }
           @keyframes pulse {
             0% { filter: drop-shadow(0 0 2px var(--yacht-color)); }
             50% { filter: drop-shadow(0 0 10px var(--yacht-color)); }
@@ -177,7 +139,7 @@ const getMapHTML = () => `
       </head>
       <body>
         <div id="map"></div>
-        <script>
+<script>
           const map = L.map('map', {
             zoomControl: true,
             attributionControl: false
@@ -200,6 +162,11 @@ const getMapHTML = () => `
             18: 0.596, 19: 0.298
           };
 
+          map.on('zoomend', () => {
+            const currentZoom = map.getZoom();
+            updateAllYachtIcons(currentZoom);
+          });
+
           function getIconSize(zoomLevel, yachtLength) {
             if (zoomLevel >= 14) {
               const metersPerPixel = METERS_PER_PIXEL[zoomLevel] || 1;
@@ -208,16 +175,6 @@ const getMapHTML = () => `
               const scale = Math.max(0.3, (zoomLevel) / 14);
               return Math.max(YACHT_MIN_SIZE, YACHT_BASE_SIZE * scale);
             }
-          }
-
-          function getYachtColor(yacht) {
-            if (yacht.seizedBy) return '#ff0000';
-            return yacht.yachtType.toLowerCase().includes('sail') ? '#00ffff' : '#00ff00';
-          }
-
-          function getYachtClass(yacht) {
-            if (yacht.seizedBy) return 'seized';
-            return yacht.yachtType.toLowerCase().includes('sail') ? 'sailing' : 'motor';
           }
 
           function createYachtIcon(yacht, loc, zoomLevel) {
@@ -235,116 +192,89 @@ const getMapHTML = () => `
             });
           }
 
-          function createPopupContent(yacht, loc) {
-            return \`
-              <div class="yacht-popup">
-                <div class="yacht-name">\${yacht.name}</div>
-                <div class="yacht-info">
-                  \${yacht.owner}<br>
-                  \${loc.speed.toFixed(1)} knots • \${loc.course.toFixed(1)}°<br>
-                  \${getNavigationStatus(loc.status)}<br>
-                  \${formatTimestamp(loc.timestamp)}
-                </div>
-              </div>
-            \`;
-          }
-
-          function getNavigationStatus(status) {
-            const statuses = {
-              0: "Under way",
-              1: "At anchor",
-              2: "Not under command",
-              3: "Restricted maneuverability",
-              4: "Constrained by draught",
-              5: "Moored",
-              6: "Aground",
-              7: "Engaged in fishing",
-              8: "Under way sailing",
-              15: "Undefined"
-            };
-            return statuses[status] || "Unknown";
-          }
-
-          function formatTimestamp(isoTimestamp) {
-            if (!isoTimestamp) return 'Unknown';
-            try {
-              const date = new Date(isoTimestamp);
-              return new Intl.DateTimeFormat('en-GB', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false
-              }).format(date);
-            } catch (e) {
-              console.error('Error formatting timestamp:', e);
-              return 'Unknown';
-            }
-          }
-
-          window.updateLocations = function(locationsStr) {
-            const locations = JSON.parse(locationsStr);
-            const currentZoom = map.getZoom();
-
-            Object.entries(locations).forEach(([mmsi, loc]) => {
-              const yacht = yachts.find(y => y.mmsi === mmsi);
-              if (!yacht || !loc.lat || !loc.lon) return;
-
-              if (markers[mmsi]) {
-                markers[mmsi].course = loc.course;
-                markers[mmsi].setLatLng([loc.lat, loc.lon]);
-                markers[mmsi].setIcon(createYachtIcon(yacht, loc, currentZoom));
-                markers[mmsi].getPopup().setContent(createPopupContent(yacht, loc));
-              } else {
-                const marker = L.marker([loc.lat, loc.lon], {
-                  icon: createYachtIcon(yacht, loc, currentZoom)
-                })
-                  .bindPopup(createPopupContent(yacht, loc), {
-                    closeButton: false,
-                    offset: [0, 5],
-                    className: 'yacht-popup-container',
-                    autoPan: false,
-                    autoClose: false
-                  })
-                  .on('click', () => {
-                    window.ReactNativeWebView.postMessage(JSON.stringify({
-                      type: 'yacht_selected',
-                      mmsi: mmsi
-                    }));
-                  })
-                  .addTo(map)
-                  .openPopup();
-
-                marker.course = loc.course;
-                markers[mmsi] = marker;
-              }
-            });
-          };
-
-          window.selectYacht = function(mmsi, lat, lon) {
-            Object.values(markers).forEach(marker => {
-              marker.getElement()?.classList?.remove('selected-yacht');
-            });
-
-            if (markers[mmsi]) {
-              markers[mmsi].getElement()?.classList?.add('selected-yacht');
-              map.setView([lat, lon], 8);
-            }
-          };
-
-          map.on('zoomend', () => {
-            const currentZoom = map.getZoom();
+          function updateAllYachtIcons(zoomLevel) {
             Object.entries(markers).forEach(([mmsi, marker]) => {
               const yacht = yachts.find(y => y.mmsi === mmsi);
               if (!yacht) return;
 
-              const loc = { course: marker.course || 0 };
-              const icon = createYachtIcon(yacht, loc, currentZoom);
+              const position = marker.getLatLng();
+              const icon = createYachtIcon(yacht, { course: marker.course || 0 }, zoomLevel);
               marker.setIcon(icon);
             });
-          });
+          }
+
+          function getYachtColor(yacht) {
+            if (yacht.seizedBy) return '#ff0000';
+            return yacht.yachtType.toLowerCase().includes('sail') ? '#00ffff' : '#00ff00';
+          }
+
+          function getYachtClass(yacht) {
+            if (yacht.seizedBy) return 'seized';
+            return yacht.yachtType.toLowerCase().includes('sail') ? 'sailing' : 'motor';
+          }
+
+          function createPopupContent(yacht, loc) {
+            try {
+              return \`
+                <div class="yacht-popup">
+                  <div class="yacht-name">\${yacht.name}</div>
+                  <div class="yacht-info">
+                    \${yacht.owner}<br>
+                    \${(loc.speed || 0).toFixed(1)} knots • \${(loc.course || 0).toFixed(1)}°<br>
+                    \${getNavigationStatus(loc.status)}<br>
+                    \${formatTimestamp(loc.timestamp)}
+                  </div>
+                </div>
+              \`;
+            } catch (error) {
+              console.error('Error creating popup content:', error);
+              return '<div class="yacht-popup">Error displaying yacht info</div>';
+            }
+          }
+
+          window.updateLocations = function(locationsData) {
+            try {
+              const locations = typeof locationsData === 'string'
+                ? JSON.parse(locationsData)
+                : locationsData;
+
+              const currentZoom = map.getZoom();
+
+              Object.entries(locations).forEach(([mmsi, loc]) => {
+                const yacht = yachts.find(y => y.mmsi === mmsi);
+                if (!yacht || !loc.lat || !loc.lon) return;
+
+                const icon = createYachtIcon(yacht, loc, currentZoom);
+
+                if (markers[mmsi]) {
+                  markers[mmsi].course = loc.course;
+                  markers[mmsi].setLatLng([loc.lat, loc.lon]);
+                  markers[mmsi].setIcon(icon);
+                  markers[mmsi].getPopup().setContent(createPopupContent(yacht, loc));
+                } else {
+                  markers[mmsi] = L.marker([loc.lat, loc.lon], { icon })
+                    .bindPopup(createPopupContent(yacht, loc), {
+                      closeButton: false,
+                      offset: [0, 5],
+                      className: 'yacht-popup-container',
+                      autoPan: false,
+                      autoClose: false
+                    })
+                    .on('click', () => {
+                      window.ReactNativeWebView.postMessage(JSON.stringify({
+                        type: 'yacht_selected',
+                        mmsi: mmsi
+                      }));
+                    })
+                    .addTo(map)
+                    .openPopup();
+                  markers[mmsi].course = loc.course;
+                }
+              });
+            } catch (error) {
+              console.error('Error updating locations:', error);
+            }
+          }
 
           window.addEventListener('load', function() {
             window.ReactNativeWebView.postMessage('mapReady');
@@ -354,16 +284,61 @@ const getMapHTML = () => `
     </html>
   `;
 
+  const handleWebViewMessage = (event: any) => {
+    try {
+      if (event.nativeEvent.data === "mapReady") {
+        setIsLoading(false);
+        return;
+      }
+
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === "yacht_selected") {
+        console.log(`${LOG_PREFIX} Yacht selected:`, data.mmsi);
+      }
+    } catch (error) {
+      console.warn(`${LOG_PREFIX} Message parsing error:`, error);
+    }
+  };
+
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: "#000",
+    },
+    map: {
+      flex: 1,
+    },
+    hidden: {
+      opacity: 0,
+    },
+    loadingContainer: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: "#000",
+    },
+  });
+
   return (
     <View style={styles.container}>
-      <WebSocketHandler yachts={yachts} onLocationUpdate={handleLocationUpdate} />
+      <WebSocketHandler
+        yachts={yachts}
+        onLocationUpdate={handleLocationUpdate}
+      />
       <WebView
         ref={webViewRef}
         source={{ html: getMapHTML() }}
         style={[styles.map, isLoading && styles.hidden]}
         onMessage={handleWebViewMessage}
         onError={(syntheticEvent) => {
-          console.warn(`${LOG_PREFIX} WebView error:`, syntheticEvent.nativeEvent);
+          console.warn(
+            `${LOG_PREFIX} WebView error:`,
+            syntheticEvent.nativeEvent,
+          );
         }}
       />
       {isLoading && (
@@ -374,28 +349,5 @@ const getMapHTML = () => `
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
-  map: {
-    flex: 1,
-  },
-  hidden: {
-    opacity: 0,
-  },
-  loadingContainer: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#000",
-  },
-});
 
 export default MapScreen;
