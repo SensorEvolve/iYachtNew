@@ -1,6 +1,5 @@
-
 import React, { useEffect, useCallback, useRef } from "react";
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus } from "react-native";
 import { Yacht } from "../Types/yacht";
 
 interface Position {
@@ -112,7 +111,6 @@ class ConnectionManager {
           this.scheduleReconnect();
         }
       };
-
     } catch (error) {
       console.error(`${LOG_PREFIX} Connection error:`, error);
       this.isConnecting = false;
@@ -202,9 +200,10 @@ const WebSocketHandler: React.FC<Props> = ({ yachts, onLocationUpdate }) => {
           const decoder = new TextDecoder();
           data = JSON.parse(decoder.decode(event.data));
         } else {
-          data = typeof event.data === "string"
-            ? JSON.parse(event.data)
-            : event.data;
+          data =
+            typeof event.data === "string"
+              ? JSON.parse(event.data)
+              : event.data;
         }
 
         if (data?.Message) {
@@ -287,7 +286,7 @@ const WebSocketHandler: React.FC<Props> = ({ yachts, onLocationUpdate }) => {
   const handleAppStateChange = useCallback((nextAppState: AppStateStatus) => {
     if (
       appState.current.match(/inactive|background/) &&
-      nextAppState === 'active' &&
+      nextAppState === "active" &&
       connectionManager.current
     ) {
       console.log(`${LOG_PREFIX} App foregrounded, reconnecting...`);
@@ -298,11 +297,17 @@ const WebSocketHandler: React.FC<Props> = ({ yachts, onLocationUpdate }) => {
 
   useEffect(() => {
     // Initialize connection manager
-    connectionManager.current = new ConnectionManager(handleMessage, sendSubscription);
+    connectionManager.current = new ConnectionManager(
+      handleMessage,
+      sendSubscription
+    );
     connectionManager.current.connect();
 
     // Setup app state listener
-    const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
+    const appStateSubscription = AppState.addEventListener(
+      "change",
+      handleAppStateChange
+    );
 
     return () => {
       connectionManager.current?.cleanup();

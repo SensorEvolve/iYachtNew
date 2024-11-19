@@ -1,5 +1,4 @@
 import { Yacht } from "./yacht";
-
 export type RootStackParamList = {
   Home: undefined;
   Detail: { yacht: Yacht };
