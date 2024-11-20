@@ -17,8 +17,9 @@ import type { RootStackParamList } from "../Types/navigation";
 import type { Yacht } from "../Types/yacht";
 import { getMainImage } from "../utils/imageUtils";
 
-type Props = NativeStackScreenProps<RootStackParamList, "Search">;
-
+type Props = NativeStackScreenProps<RootStackParamList, "Search"> & {
+  yachts: Yacht[];
+};
 const SearchScreen: React.FC<Props> = ({ navigation, route }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [yachts, setYachts] = useState<Yacht[]>([]);

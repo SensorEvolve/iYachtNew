@@ -17,14 +17,17 @@ interface Props {
 }
 
 const LOG_PREFIX = "🔌 [WebSocket]";
+const WS_URL = "wss://stream.aisstream.io/v0/stream";
+const API_KEY = "a8437deb4bfa21aa490de22b93bee19dcbb76540";
 
 class ConnectionManager {
   private ws: WebSocket | null = null;
   private reconnectTimeout?: NodeJS.Timeout;
   private currentRetry = 0;
-  private readonly baseDelay = 5000;
+  private readonly maxRetries = 5;
+  private readonly baseDelay = 1000;
   private readonly maxDelay = 30000;
-  private readonly subscriptionDelay = 500;
+  private readonly jitter = 0.1;
   private subscriptionTimeout?: NodeJS.Timeout;
   private lastMessageTime?: number;
   private heartbeatInterval?: NodeJS.Timeout;
@@ -49,6 +52,7 @@ class ConnectionManager {
       const now = Date.now();
       const elapsed = now - this.lastMessageTime;
 
+      // If no message received in 30 seconds, reconnect
       if (elapsed > 30000 && this.ws && !this.isConnecting) {
         console.log(`${LOG_PREFIX} Connection stale, reconnecting...`);
         this.reconnect();
@@ -57,8 +61,8 @@ class ConnectionManager {
   }
 
   public connect() {
-    if (this.isConnecting) {
-      console.log(`${LOG_PREFIX} Connection attempt already in progress`);
+    if (this.isConnecting || this.ws?.readyState === WebSocket.OPEN) {
+      console.log(`${LOG_PREFIX} Connection already active or in progress`);
       return;
     }
 
@@ -70,7 +74,7 @@ class ConnectionManager {
         `${LOG_PREFIX} Creating connection (Attempt ${this.currentRetry + 1})`
       );
 
-      this.ws = new WebSocket("wss://stream.aisstream.io/v0/stream");
+      this.ws = new WebSocket(WS_URL);
 
       this.ws.onopen = () => {
         console.log(`${LOG_PREFIX} Connected successfully`);
@@ -79,7 +83,7 @@ class ConnectionManager {
         this.isConnecting = false;
         this.isSubscribed = false;
 
-        // Delay subscription to ensure connection is stable
+        // Delay subscription slightly to ensure connection is stable
         if (this.subscriptionTimeout) {
           clearTimeout(this.subscriptionTimeout);
         }
@@ -88,7 +92,7 @@ class ConnectionManager {
             this.onConnect();
             this.isSubscribed = true;
           }
-        }, this.subscriptionDelay);
+        }, 500);
       };
 
       this.ws.onmessage = (event) => {
@@ -97,8 +101,12 @@ class ConnectionManager {
       };
 
       this.ws.onerror = (error) => {
-        console.error(`${LOG_PREFIX} Error:`, error);
+        console.error(`${LOG_PREFIX} Connection error:`, error);
         this.isConnecting = false;
+        // Only attempt reconnect if we haven't exceeded max retries
+        if (this.currentRetry < this.maxRetries) {
+          this.scheduleReconnect();
+        }
       };
 
       this.ws.onclose = (event) => {
@@ -106,15 +114,17 @@ class ConnectionManager {
         this.isConnecting = false;
         this.isSubscribed = false;
 
-        // Don't reconnect on normal closure (1000) or if already reconnecting
-        if (event.code !== 1000 && !this.reconnectTimeout) {
+        // Don't reconnect if it was a normal closure or max retries reached
+        if (event.code !== 1000 && this.currentRetry < this.maxRetries) {
           this.scheduleReconnect();
         }
       };
     } catch (error) {
       console.error(`${LOG_PREFIX} Connection error:`, error);
       this.isConnecting = false;
-      this.scheduleReconnect();
+      if (this.currentRetry < this.maxRetries) {
+        this.scheduleReconnect();
+      }
     }
   }
 
@@ -123,12 +133,15 @@ class ConnectionManager {
       clearTimeout(this.reconnectTimeout);
     }
 
+    // Calculate delay with exponential backoff and jitter
     const delay = Math.min(
-      this.baseDelay * Math.pow(1.5, this.currentRetry),
+      this.baseDelay *
+        Math.pow(2, this.currentRetry) *
+        (1 + Math.random() * this.jitter),
       this.maxDelay
     );
 
-    console.log(`${LOG_PREFIX} Reconnecting in ${delay}ms...`);
+    console.log(`${LOG_PREFIX} Reconnecting in ${Math.round(delay)}ms...`);
 
     this.reconnectTimeout = setTimeout(() => {
       this.currentRetry++;
@@ -157,6 +170,7 @@ class ConnectionManager {
   }
 
   public cleanup() {
+    console.log(`${LOG_PREFIX} Cleaning up connection...`);
     this.isConnecting = false;
     this.isSubscribed = false;
 
@@ -170,13 +184,16 @@ class ConnectionManager {
       clearInterval(this.heartbeatInterval);
     }
     if (this.ws) {
-      this.ws.close(1000); // Normal closure
+      try {
+        this.ws.close(1000);
+      } catch (error) {
+        console.warn(`${LOG_PREFIX} Error during cleanup:`, error);
+      }
       this.ws = null;
     }
   }
 }
 
-// Rest of the component remains the same...
 const WebSocketHandler: React.FC<Props> = ({ yachts, onLocationUpdate }) => {
   const connectionManager = useRef<ConnectionManager>();
   const appState = useRef(AppState.currentState);
@@ -195,16 +212,8 @@ const WebSocketHandler: React.FC<Props> = ({ yachts, onLocationUpdate }) => {
   const handleMessage = useCallback(
     (event: WebSocketMessageEvent) => {
       try {
-        let data;
-        if (event.data instanceof ArrayBuffer) {
-          const decoder = new TextDecoder();
-          data = JSON.parse(decoder.decode(event.data));
-        } else {
-          data =
-            typeof event.data === "string"
-              ? JSON.parse(event.data)
-              : event.data;
-        }
+        const data =
+          typeof event.data === "string" ? JSON.parse(event.data) : event.data;
 
         if (data?.Message) {
           const positionData =
@@ -212,27 +221,22 @@ const WebSocketHandler: React.FC<Props> = ({ yachts, onLocationUpdate }) => {
             data.Message.StandardClassBPositionReport;
 
           if (positionData && data.MetaData?.MMSI) {
-            const timestamp = data.MetaData.time_utc?.split(".")[0] + "Z";
-
-            const position = {
+            const position: Position = {
               lat: positionData.Latitude,
               lon: positionData.Longitude,
               speed: positionData.Sog || 0,
               course: positionData.Cog || 0,
               status: positionData.NavigationalStatus,
-              timestamp: timestamp,
+              timestamp: data.MetaData.time_utc?.split(".")[0] + "Z",
             };
 
             if (isValidPosition(position)) {
-              // Add to batch instead of immediate update
               batchedUpdates.current.set(String(data.MetaData.MMSI), position);
 
-              // Clear existing timeout
               if (batchTimeout.current) {
                 clearTimeout(batchTimeout.current);
               }
 
-              // Process batch after 100ms of no new updates
               batchTimeout.current = setTimeout(processBatchedUpdates, 100);
             }
           }
@@ -267,7 +271,7 @@ const WebSocketHandler: React.FC<Props> = ({ yachts, onLocationUpdate }) => {
     console.log(`${LOG_PREFIX} Subscribing to ${mmsiList.length} vessels`);
 
     const message = {
-      APIKey: "a8437deb4bfa21aa490de22b93bee19dcbb76540",
+      APIKey: API_KEY,
       BoundingBoxes: [
         [
           [-90, -180],
@@ -296,14 +300,12 @@ const WebSocketHandler: React.FC<Props> = ({ yachts, onLocationUpdate }) => {
   }, []);
 
   useEffect(() => {
-    // Initialize connection manager
     connectionManager.current = new ConnectionManager(
       handleMessage,
       sendSubscription
     );
     connectionManager.current.connect();
 
-    // Setup app state listener
     const appStateSubscription = AppState.addEventListener(
       "change",
       handleAppStateChange
