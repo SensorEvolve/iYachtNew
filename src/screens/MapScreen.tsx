@@ -281,7 +281,7 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
                 \${loc.speed.toFixed(1)} knots • \${loc.course.toFixed(1)}°<br>
                 \${loc.source === "MANUAL" ? "Last seen:" : statusCodes[loc.status] || "Unknown"}<br>
                 \${new Date(loc.timestamp).toLocaleString()}
-                \${loc.source === "MANUAL" ? '<br><span class="manual-source">Manual position</span>' : ''}
+                \${loc.source === "MANUAL" ? '<br><span class="manual-source">Stored position</span>' : ''}
               </div>
             \`;
 

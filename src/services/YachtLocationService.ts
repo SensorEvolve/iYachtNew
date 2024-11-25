@@ -12,22 +12,15 @@ interface LocationUpdate {
 
 const STORAGE_KEY = "@yacht_locations";
 const LOG_PREFIX = "🛥️ [LocationService]";
-const OFFLINE_THRESHOLD = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
 class YachtLocationService {
   private locations: Map<string, YachtLocation> = new Map();
   private initialized: boolean = false;
   private initializationPromise: Promise<void>;
-  private lastCleanup: number = 0;
-  private cleanupInterval: number = 60 * 60 * 1000; // 1 hour
 
   constructor() {
-    console.log(`${LOG_PREFIX} Service initialized`);
+    console.log(`${LOG_PREFIX} Service created`);
     this.initializationPromise = this.initialize();
-  }
-
-  public async waitForInitialization(): Promise<void> {
-    await this.initializationPromise;
   }
 
   private async initialize(): Promise<void> {
@@ -42,6 +35,10 @@ class YachtLocationService {
     }
   }
 
+  public async waitForInitialization(): Promise<void> {
+    await this.initializationPromise;
+  }
+
   private async loadLocations(): Promise<void> {
     try {
       console.log(`${LOG_PREFIX} Loading stored locations`);
@@ -49,11 +46,11 @@ class YachtLocationService {
 
       if (storedLocations) {
         const parsed = JSON.parse(storedLocations);
-
         if (Array.isArray(parsed)) {
           parsed.forEach((location) => {
+            // Ensure status is present for manual locations
             if (location.source === "MANUAL" && !location.status) {
-              location.status = 5; // Set moored status for manual positions
+              location.status = 5; // Set moored status
             }
             this.locations.set(location.mmsi, location);
           });
@@ -64,13 +61,10 @@ class YachtLocationService {
           );
           console.log(`${LOG_PREFIX} Manual: ${stats.manual}`);
           console.log(`${LOG_PREFIX} AIS: ${stats.ais}`);
-          console.log(`${LOG_PREFIX} Last update: ${stats.lastUpdate}`);
         } else {
           console.warn(`${LOG_PREFIX} Invalid stored data format`);
           this.locations = new Map();
         }
-      } else {
-        console.log(`${LOG_PREFIX} No stored locations found`);
       }
     } catch (error) {
       console.error(`${LOG_PREFIX} Error loading locations:`, error);
@@ -83,21 +77,10 @@ class YachtLocationService {
       `${LOG_PREFIX} Processing ${csvLocations.length} manual locations from CSV`
     );
 
-    let updateCount = 0;
-    let skipCount = 0;
-
     for (const location of csvLocations) {
       if (!this.isValidCoordinate(location.lat, location.lon)) {
         console.warn(
-          `${LOG_PREFIX} Invalid coordinates for ${location.mmsi} in CSV:`,
-          `${location.lat},${location.lon}`
-        );
-        continue;
-      }
-
-      if (!location.timestamp) {
-        console.warn(
-          `${LOG_PREFIX} Missing timestamp for ${location.mmsi} in CSV`
+          `${LOG_PREFIX} Invalid coordinates for ${location.mmsi} in CSV`
         );
         continue;
       }
@@ -110,38 +93,30 @@ class YachtLocationService {
       };
 
       if (!existingLocation) {
+        // No existing location, add the manual one
         this.locations.set(location.mmsi, csvLocation);
-        console.log(
-          `${LOG_PREFIX} Added new manual position for ${location.mmsi} from CSV`
-        );
-        updateCount++;
+        console.log(`${LOG_PREFIX} Added manual position for ${location.mmsi}`);
       } else if (existingLocation.source === "MANUAL") {
+        // Only update manual positions if CSV data is newer
         const existingDate = new Date(existingLocation.timestamp);
         const newDate = new Date(location.timestamp);
 
         if (newDate > existingDate) {
           this.locations.set(location.mmsi, csvLocation);
           console.log(
-            `${LOG_PREFIX} Updated manual position for ${location.mmsi} from CSV`
+            `${LOG_PREFIX} Updated manual position for ${location.mmsi}`
           );
-          updateCount++;
         } else {
           console.log(
             `${LOG_PREFIX} Keeping existing manual position for ${location.mmsi}`
           );
-          skipCount++;
         }
       } else {
         console.log(
           `${LOG_PREFIX} Keeping existing AIS position for ${location.mmsi}`
         );
-        skipCount++;
       }
     }
-
-    console.log(`${LOG_PREFIX} CSV processing complete:`);
-    console.log(`${LOG_PREFIX} Updated: ${updateCount}`);
-    console.log(`${LOG_PREFIX} Skipped: ${skipCount}`);
 
     await this.saveLocations();
   }
@@ -158,7 +133,7 @@ class YachtLocationService {
     const currentLocation = this.locations.get(mmsi);
     const newTimestamp = update.timestamp || new Date().toISOString();
 
-    // If current position is MANUAL, only update if the new position is newer
+    // If current position is MANUAL, only update if new data is newer
     if (currentLocation?.source === "MANUAL") {
       const currentDate = new Date(currentLocation.timestamp);
       const newDate = new Date(newTimestamp);
@@ -181,14 +156,12 @@ class YachtLocationService {
         );
         await this.saveLocations();
       } else {
-        console.log(
-          `${LOG_PREFIX} Keeping manual position for ${mmsi} (newer than update)`
-        );
+        console.log(`${LOG_PREFIX} Keeping manual position for ${mmsi}`);
       }
       return;
     }
 
-    // For AIS positions or new entries
+    // Always update AIS positions with new data
     const newLocation: YachtLocation = {
       mmsi,
       lat: update.lat,
@@ -201,47 +174,8 @@ class YachtLocationService {
     };
 
     this.locations.set(mmsi, newLocation);
+    console.log(`${LOG_PREFIX} Updated AIS position for ${mmsi}`);
     await this.saveLocations();
-
-    // Check for cleanup
-    await this.checkAndCleanupOfflineVessels();
-  }
-
-  private async checkAndCleanupOfflineVessels(): Promise<void> {
-    const now = Date.now();
-    if (now - this.lastCleanup < this.cleanupInterval) {
-      return;
-    }
-
-    this.lastCleanup = now;
-    const offlineThreshold = now - OFFLINE_THRESHOLD;
-    let convertedCount = 0;
-
-    for (const [mmsi, location] of this.locations.entries()) {
-      if (location.source === "AIS") {
-        const locationDate = new Date(location.timestamp).getTime();
-        if (locationDate < offlineThreshold) {
-          // Convert to manual position
-          const manualLocation: YachtLocation = {
-            ...location,
-            source: "MANUAL",
-            status: 5, // Moored
-          };
-          this.locations.set(mmsi, manualLocation);
-          convertedCount++;
-          console.log(
-            `${LOG_PREFIX} Converted offline vessel ${mmsi} to manual position`
-          );
-        }
-      }
-    }
-
-    if (convertedCount > 0) {
-      console.log(
-        `${LOG_PREFIX} Converted ${convertedCount} offline vessels to manual positions`
-      );
-      await this.saveLocations();
-    }
   }
 
   private async saveLocations(): Promise<void> {

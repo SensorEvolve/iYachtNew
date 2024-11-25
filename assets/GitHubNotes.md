@@ -23,3 +23,13 @@
 - Choose template, recommend expo-template-blank, with typescript.
 - cd <name of project>
 - expo start -c
+
+
+
+
+**START A REACT EXPO PROJECT**
+
+- expo init <name of project>
+- Choose template, recommend expo-template-blank, with typescript.
+- cd <name of project>
+- expo start -c
