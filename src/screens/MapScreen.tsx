@@ -34,7 +34,10 @@ const MAP_CONFIG = {
     lon: 17.19905,
     zoom: 4,
   },
-  tileLayer: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+
+  tileLayer:
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  //  tileLayer: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
   statusCodes: {
     0: "Under way",
     1: "At anchor",
@@ -86,7 +89,7 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
               source: loc.source,
             },
           }),
-          {}
+          {},
         );
 
         setLocations(initialLocations);
@@ -225,12 +228,10 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
             zoomControl: true,
             attributionControl: false
           }).setView([${MAP_CONFIG.initialView.lat}, ${
-    MAP_CONFIG.initialView.lon
-  }], ${MAP_CONFIG.initialView.zoom});
+            MAP_CONFIG.initialView.lon
+          }], ${MAP_CONFIG.initialView.zoom});
 
-          L.tileLayer('${
-            MAP_CONFIG.tileLayer
-          }', { attribution: false }).addTo(map);
+          L.tileLayer('${MAP_CONFIG.tileLayer}', { attribution: false }).addTo(map);
 
           const markers = {};
           const yachts = ${JSON.stringify(yachts)};
@@ -370,18 +371,13 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
   // Above this is the HTML BOCK
   return (
     <View style={styles.container}>
-      <WebSocketHandler
-        yachts={yachts}
-        onLocationUpdate={handleLocationUpdate}
-      />
+      <WebSocketHandler yachts={yachts} onLocationUpdate={handleLocationUpdate} />
       <WebView
         ref={webViewRef}
         source={{ html: getMapHTML() }}
         style={[styles.map, isLoading && styles.hidden]}
         onMessage={handleWebViewMessage}
-        onError={(error) =>
-          console.warn(`${LOG_PREFIX} WebView error:`, error.nativeEvent)
-        }
+        onError={(error) => console.warn(`${LOG_PREFIX} WebView error:`, error.nativeEvent)}
       />
       {isLoading && (
         <View style={styles.loadingContainer}>
