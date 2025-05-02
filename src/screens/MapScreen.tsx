@@ -200,7 +200,10 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
             color: white;
             text-align: center;
             white-space: nowrap;
-            text-shadow: 1px 1px 3px rgba(0,0,0,0.9);
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.9);
+            background-color: rgba(0, 0, 0, 0.6); /* Add dark semi-transparent background */
+            padding: 3px 6px;                   /* Add some padding */
+            border-radius: 4px;                 /* Add rounded corners */
             opacity: 0;
             transition: opacity 0.3s ease;
             pointer-events: none;
@@ -253,7 +256,7 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
 
           function getFontSize(zoomLevel) {
             const MIN_FONT = 10;
-            const MAX_FONT = 20;
+            const MAX_FONT = 24;
             const scale = Math.max(0.3, zoomLevel / 14);
             return Math.min(MAX_FONT, Math.max(MIN_FONT, MIN_FONT * scale));
           }
