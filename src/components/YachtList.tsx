@@ -1,9 +1,9 @@
 import React, {
-  useState,
+  // Removed useState as isLoading state is removed from YachtItem
   useCallback,
   memo,
   forwardRef,
-  useEffect,
+  useEffect, // Keep useEffect for SkeletonItem
 } from "react";
 import {
   View,
@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   Image,
   Platform,
-  ActivityIndicator,
+  ActivityIndicator, // Keep for potential future use, though not used in YachtItem now
   Animated,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -23,16 +23,18 @@ import { getMainImage } from "../utils/imageUtils";
 interface YachtListProps {
   yachts: Yacht[];
   onYachtPress: (yacht: Yacht) => void;
-  isLoading?: boolean;
+  isLoading?: boolean; // Prop for overall list loading (Skeleton)
 }
 
 interface YachtItemProps {
   yacht: Yacht;
   onPress: () => void;
-  onLoadStart: () => void;
-  onLoadEnd: () => void;
+  // Removed onLoadStart/onLoadEnd from props as they are not used in simplified version
+  // onLoadStart: () => void;
+  // onLoadEnd: () => void;
 }
 
+// --- SkeletonItem and SkeletonList components remain unchanged ---
 const SkeletonItem = () => {
   const animatedValue = new Animated.Value(0);
 
@@ -83,42 +85,45 @@ const SkeletonList = () => {
     />
   );
 };
+// --- End of Skeleton components ---
 
+// *** YachtItem Modified for Test 1: Removed internal loading state ***
 const YachtItem = memo(
-  ({ yacht, onPress, onLoadStart, onLoadEnd }: YachtItemProps) => {
-    const [isLoading, setIsLoading] = useState(true);
+  ({ yacht, onPress /* Removed onLoadStart, onLoadEnd from props */ }: YachtItemProps) => {
+    // const [isLoading, setIsLoading] = useState(true); // <-- REMOVED
     const imageSource = getMainImage(yacht.imageName);
 
-    const handleLoadStart = useCallback(() => {
-      setIsLoading(true);
-      onLoadStart();
-    }, [onLoadStart]);
+    // Keep console log for local testing if desired
+    console.log(
+      `(Local Log) YachtItem Render: ${yacht.name}, ImageName: ${yacht.imageName}, Source: ${imageSource}`,
+    );
 
-    const handleLoadEnd = useCallback(() => {
-      setIsLoading(false);
-      onLoadEnd();
-    }, [onLoadEnd]);
+    // const handleLoadStart = useCallback(() => { ... }, []); // <-- REMOVED
+    // const handleLoadEnd = useCallback(() => { ... }, []); // <-- REMOVED
+    // const handleLoadError = useCallback(() => { ... }, []); // <-- REMOVED (can add basic error logging if needed)
 
     return (
       <View style={styles.cardWrapper}>
-        <TouchableOpacity
-          style={styles.card}
-          onPress={onPress}
-          activeOpacity={0.95}
-        >
+        <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.95}>
           <View style={styles.cardContent}>
             <View style={styles.imageSection}>
-              {isLoading && (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color="#666" />
-                </View>
-              )}
+              {/* {isLoading && ( ... <ActivityIndicator ... /> ... )} */
+              /* <-- REMOVED */}
               <Image
                 source={imageSource}
-                style={[styles.yachtImage, isLoading && styles.imageHidden]}
+                // style={[styles.yachtImage, isLoading && styles.imageHidden]} // <-- Use base style ONLY
+                style={styles.yachtImage}
                 resizeMode="cover"
-                onLoadStart={handleLoadStart}
-                onLoadEnd={handleLoadEnd}
+                // onLoadStart={handleLoadStart} // <-- REMOVED
+                // onLoadEnd={handleLoadEnd}     // <-- REMOVED
+                // onError={handleLoadError}   // <-- REMOVED (or add simple console.error)
+                onError={(error) => {
+                  // Optional basic error logging
+                  console.error(
+                    `IMAGE LOAD ERROR for ${yacht.name} (Source: ${imageSource}):`,
+                    error.nativeEvent.error,
+                  );
+                }}
               />
               {yacht.seizedBy && (
                 <View style={styles.seizedBadge}>
@@ -127,6 +132,7 @@ const YachtItem = memo(
               )}
             </View>
 
+            {/* --- Info Section remains unchanged --- */}
             <View style={styles.infoSection}>
               <View style={styles.titleRow}>
                 <Text style={styles.name} numberOfLines={1}>
@@ -153,6 +159,7 @@ const YachtItem = memo(
                 )}
               </View>
             </View>
+            {/* --- End of Info Section --- */}
           </View>
         </TouchableOpacity>
       </View>
@@ -160,35 +167,30 @@ const YachtItem = memo(
   },
 );
 
+// --- YachtList component remains mostly unchanged ---
+// It no longer needs to pass down onLoadStart/End unless the parent uses them
 const YachtList = forwardRef<FlatList, YachtListProps>(
   ({ yachts, onYachtPress, isLoading }, ref) => {
-    const [loadingImages, setLoadingImages] = useState<{
-      [key: string]: boolean;
-    }>({});
-
-    const handleLoadStart = useCallback((id: string) => {
-      setLoadingImages((prev) => ({ ...prev, [id]: true }));
-    }, []);
-
-    const handleLoadEnd = useCallback((id: string) => {
-      setLoadingImages((prev) => ({ ...prev, [id]: false }));
-    }, []);
+    // Removed the loadingImages state and handlers as they are not used by simplified YachtItem
+    // const [loadingImages, setLoadingImages] = useState<{ [key: string]: boolean }>({});
+    // const handleLoadStart = useCallback((id: string) => { ... }, []);
+    // const handleLoadEnd = useCallback((id: string) => { ... }, []);
 
     const renderYacht = useCallback(
       ({ item }: { item: Yacht }) => (
         <YachtItem
           yacht={item}
           onPress={() => onYachtPress(item)}
-          onLoadStart={() => handleLoadStart(item.id)}
-          onLoadEnd={() => handleLoadEnd(item.id)}
+          // No longer passing onLoadStart/onLoadEnd down
         />
       ),
-      [onYachtPress, handleLoadStart, handleLoadEnd],
+      [onYachtPress], // Dependencies updated
     );
 
     const keyExtractor = useCallback((item: Yacht) => item.id, []);
 
     if (isLoading) {
+      // This isLoading is for the whole list (passed from HomeScreen)
       return <SkeletonList />;
     }
 
@@ -207,7 +209,9 @@ const YachtList = forwardRef<FlatList, YachtListProps>(
     );
   },
 );
+// --- End of YachtList component ---
 
+// --- Styles remain unchanged ---
 const styles = StyleSheet.create({
   listContainer: {
     padding: 12,
@@ -242,7 +246,7 @@ const styles = StyleSheet.create({
   imageSection: {
     width: "100%",
     height: 200,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#F8F9FA", // Background shown briefly before image loads
     justifyContent: "center",
     alignItems: "center",
     position: "relative",
@@ -260,24 +264,24 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
-  loadingContainer: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(248, 249, 250, 0.9)",
-    zIndex: 1,
-  },
+  // loadingContainer: { // Style is still here but component using it is commented out
+  //   position: "absolute",
+  //   top: 0,
+  //   left: 0,
+  //   right: 0,
+  //   bottom: 0,
+  //   justifyContent: "center",
+  //   alignItems: "center",
+  //   backgroundColor: "rgba(248, 249, 250, 0.9)",
+  //   zIndex: 1,
+  // },
   yachtImage: {
     width: "100%",
     height: "100%",
   },
-  imageHidden: {
-    opacity: 0,
-  },
+  // imageHidden: { // Style is still here but style prop using it is commented out
+  //  opacity: 0,
+  // },
   infoSection: {
     padding: 12,
     paddingVertical: 14,
@@ -346,6 +350,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
 });
+// --- End of Styles ---
 
 YachtList.displayName = "YachtList";
 
