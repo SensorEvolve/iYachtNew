@@ -1,24 +1,25 @@
+// metro.config.js
 const { getDefaultConfig } = require("expo/metro-config");
+const { mergeConfig } = require("metro-config");
 
-module.exports = (() => {
-  const config = getDefaultConfig(__dirname);
+// Get the default Metro configuration
+const defaultConfig = getDefaultConfig(__dirname);
 
-  // Modify resolver for SVG support
-  const { assetExts, sourceExts } = config.resolver;
-  config.transformer = {
-    ...config.transformer,
+// Destructure for easier access
+const { assetExts, sourceExts } = defaultConfig.resolver;
+
+// Configure react-native-svg-transformer
+const svgTransformerConfig = {
+  transformer: {
     babelTransformerPath: require.resolve("react-native-svg-transformer"),
-    assetPlugins: [
-      ...config.transformer.assetPlugins,
-      "expo-asset/tools/hashAssetFiles",
-    ],
-  };
-
-  config.resolver = {
-    ...config.resolver,
+  },
+  resolver: {
+    // Keep existing assetExts, filter out 'svg', add 'csv'
     assetExts: assetExts.filter((ext) => ext !== "svg").concat(["csv"]),
+    // Keep existing sourceExts, add 'svg'
     sourceExts: [...sourceExts, "svg"],
-  };
+  },
+};
 
-  return config;
-})();
+// Merge the default config with the SVG transformer config
+module.exports = mergeConfig(defaultConfig, svgTransformerConfig);
