@@ -1,12 +1,12 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
-  View,
-  StyleSheet,
-  TouchableOpacity,
   ActivityIndicator,
+  Animated,
   FlatList,
   Platform,
-  Animated,
+  StyleSheet,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../Types/navigation";
@@ -15,11 +15,11 @@ import YachtList from "../components/YachtList";
 import { Yacht } from "../Types/yacht";
 import { Ionicons } from "@expo/vector-icons";
 import {
-  SizeIcon,
-  SpeedometerIcon,
+  IconProps,
   PriceIcon,
   SeizedIcon,
-  IconProps,
+  SizeIcon,
+  SpeedometerIcon,
 } from "../components/icons/CustomIcons";
 
 interface Props extends NativeStackScreenProps<RootStackParamList, "Home"> {
@@ -200,13 +200,6 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
           onPress={() => toggleFilter("bySeized")}
           icon={SeizedIcon}
         />
-        <TouchableOpacity
-          style={styles.filterButton}
-          onPress={handleFavoritesPress}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="heart-outline" size={30} color="#666" />
-        </TouchableOpacity>
       </View>
 
       <YachtList

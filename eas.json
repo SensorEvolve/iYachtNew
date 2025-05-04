@@ -9,10 +9,16 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_AISSTREAM_API_KEY": "a8437deb4bfa21aa490de22b93bee19dcbb76540"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_AISSTREAM_API_KEY": "a8437deb4bfa21aa490de22b93bee19dcbb76540"
+      }
     }
   },
   "submit": {

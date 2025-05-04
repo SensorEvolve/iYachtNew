@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { AppState, AppStateStatus } from "react-native";
 import { Yacht } from "../Types/yacht";
 
@@ -33,7 +33,7 @@ class ConnectionManager {
 
   constructor(
     private readonly onMessage: (event: WebSocketMessageEvent) => void,
-    private readonly onConnect: () => void
+    private readonly onConnect: () => void,
   ) {
     this.setupHeartbeat();
   }
@@ -67,7 +67,7 @@ class ConnectionManager {
 
     try {
       console.log(
-        `${LOG_PREFIX} Creating connection (Attempt ${this.currentRetry + 1})`
+        `${LOG_PREFIX} Creating connection (Attempt ${this.currentRetry + 1})`,
       );
 
       this.ws = new WebSocket("wss://stream.aisstream.io/v0/stream");
@@ -125,7 +125,7 @@ class ConnectionManager {
 
     const delay = Math.min(
       this.baseDelay * Math.pow(1.5, this.currentRetry),
-      this.maxDelay
+      this.maxDelay,
     );
 
     console.log(`${LOG_PREFIX} Reconnecting in ${delay}ms...`);
@@ -200,15 +200,13 @@ const WebSocketHandler: React.FC<Props> = ({ yachts, onLocationUpdate }) => {
           const decoder = new TextDecoder();
           data = JSON.parse(decoder.decode(event.data));
         } else {
-          data =
-            typeof event.data === "string"
-              ? JSON.parse(event.data)
-              : event.data;
+          data = typeof event.data === "string"
+            ? JSON.parse(event.data)
+            : event.data;
         }
 
         if (data?.Message) {
-          const positionData =
-            data.Message.PositionReport ||
+          const positionData = data.Message.PositionReport ||
             data.Message.StandardClassBPositionReport;
 
           if (positionData && data.MetaData?.MMSI) {
@@ -241,7 +239,7 @@ const WebSocketHandler: React.FC<Props> = ({ yachts, onLocationUpdate }) => {
         console.error(`${LOG_PREFIX} Message processing error:`, error);
       }
     },
-    [processBatchedUpdates]
+    [processBatchedUpdates],
   );
 
   const isValidPosition = (position: Position): boolean => {
@@ -267,7 +265,7 @@ const WebSocketHandler: React.FC<Props> = ({ yachts, onLocationUpdate }) => {
     console.log(`${LOG_PREFIX} Subscribing to ${mmsiList.length} vessels`);
 
     const message = {
-      APIKey: "a8437deb4bfa21aa490de22b93bee19dcbb76540",
+      APIKey: process.env.EXPO_PUBLIC_AISSTREAM_API_KEY,
       BoundingBoxes: [
         [
           [-90, -180],
@@ -299,14 +297,14 @@ const WebSocketHandler: React.FC<Props> = ({ yachts, onLocationUpdate }) => {
     // Initialize connection manager
     connectionManager.current = new ConnectionManager(
       handleMessage,
-      sendSubscription
+      sendSubscription,
     );
     connectionManager.current.connect();
 
     // Setup app state listener
     const appStateSubscription = AppState.addEventListener(
       "change",
-      handleAppStateChange
+      handleAppStateChange,
     );
 
     return () => {
