@@ -1,7 +1,7 @@
 // src/screens/AboutScreen.tsx
 import React from "react";
 import {
-  Image,
+  Image, // << 1. Ensure Image is imported
   Linking,
   ScrollView,
   StyleSheet,
@@ -9,11 +9,11 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-// import * as Application from 'expo-application'; // Requires: npx expo install expo-application
+import Constants from "expo-constants";
 
 const AboutScreen: React.FC = () => {
-  // const appVersion = Application.nativeApplicationVersion || '1.0.0'; // Example using expo-application
-  const appVersion = "1.0.1"; // Hardcode for simplicity for now
+  const appName = Constants.expoConfig?.name || "Yacht Tracker";
+  const appVersion = Constants.expoConfig?.version || "1.0.0";
 
   const openLink = (url: string) => {
     Linking.openURL(url).catch((err) =>
@@ -21,15 +21,23 @@ const AboutScreen: React.FC = () => {
     );
   };
 
-  // --- Remember to replace this placeholder! ---
   const contactEmail = "support@superyachtapp.example.com"; // <<< REPLACE THIS EMAIL
+  const mailSubject = `${encodeURIComponent(appName)} App Feedback`;
 
   return (
     <ScrollView style={styles.container}>
       {/* --- Header Section --- */}
       <View style={styles.header}>
-        {/* <Image source={require('../assets/app-icon.png')} style={styles.logo} /> */}
-        <Text style={styles.appName}>Super Yachts App</Text>
+        {/* VVVV --- 2. ADD IMAGE COMPONENT HERE --- VVVV */}
+        <Image
+          // 3. Use require with RELATIVE path from this file to your assets folder
+          //    Adjust '../../assets/icon.png' if your structure differs
+          //    (e.g., if assets is inside src, it might be '../assets/icon.png')
+          source={require("../../assets/icon.png")}
+          style={styles.logo} // Use existing logo style
+        />
+        {/* ^^^^ --- END IMAGE COMPONENT --- ^^^^ */}
+        <Text style={styles.appName}>{appName}</Text>
         <Text style={styles.version}>Version {appVersion}</Text>
       </View>
 
@@ -37,24 +45,11 @@ const AboutScreen: React.FC = () => {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>About This App</Text>
         <Text style={styles.paragraph}>
-          Welcome to the Super Yachts App! Your pocket guide to the world of
-          luxury yachting. Browse detailed specifications, view stunning images,
-          and explore information about designers, builders, and owners.
-        </Text>
-        <Text style={styles.paragraph}>
-          Data is sourced from public databases and user contributions. Use the
-          map feature (where available) to see reported vessel locations.
-        </Text>
-      </View>
-
-      {/* --- Data Sources Section --- */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Data Sources & Credits</Text>
-        <Text style={styles.paragraph}>
-          Yacht data and specifications are compiled from various public domain
-          sources. Image attributions are provided separately via the 'Image
-          Credits' section. Live tracking data relies on AIS information and
-          availability may vary.
+          Welcome to{" "}
+          {appName}! Your pocket guide to the world of luxury yachting. Browse
+          detailed specifications, view stunning images, explore information
+          about designers, builders, and owners, and use the map feature (where
+          available) to see reported vessel locations.
         </Text>
       </View>
 
@@ -63,50 +58,43 @@ const AboutScreen: React.FC = () => {
         <Text style={styles.sectionTitle}>Contact & Feedback</Text>
         <TouchableOpacity
           onPress={() =>
-            openLink(
-              `mailto:${contactEmail}?subject=Super%20Yacht%20App%20Feedback`,
-            )}
+            openLink(`mailto:${contactEmail}?subject=${mailSubject}`)}
         >
           <Text style={styles.link}>Send Feedback</Text>
         </TouchableOpacity>
-        {
-          /* Optional Links
-         <TouchableOpacity onPress={() => openLink('https://yoursuperyachtapp.com/privacy')}>
-             <Text style={styles.link}>Privacy Policy</Text>
-         </TouchableOpacity>
-         */
-        }
       </View>
 
-      {/* --- NEW: Disclaimer Section --- */}
+      {/* --- Disclaimer Section --- */}
       <View style={styles.disclaimerSection}>
         <Text style={styles.disclaimerTitle}>Disclaimer</Text>
 
-        <Text style={styles.subHeading}>Accuracy of Information</Text>
+        <Text style={styles.subHeading}>Data Accuracy & Sources</Text>
         <Text style={styles.disclaimerParagraph}>
-          The Super Yachts App compiles yacht specifications, images, and vessel
-          location data from publicly available sources and user contributions.
-          While every reasonable effort is made to ensure accuracy and
-          timeliness, we do not guarantee the completeness, reliability, or
-          accuracy of this information. Use of this data is at your own risk.
+          The {appName}{" "}
+          compiles yacht specifications, images, ownership details, and vessel
+          location data primarily from publicly available sources and user
+          contributions. While reasonable efforts are made to ensure accuracy
+          and timeliness, we do not guarantee the completeness, reliability, or
+          accuracy of any information. Use of all data provided by this app is
+          at your own risk. Specific details regarding image attributions can be
+          found in the 'Image Credits' section (if applicable).
         </Text>
 
         <Text style={styles.subHeading}>Image and Content Copyright</Text>
         <Text style={styles.disclaimerParagraph}>
-          Images and textual content included within this app are sourced
-          primarily from the public domain, licensed third parties, or
-          contributed by users. Proper attribution is provided where necessary.
-          If you are the copyright holder of content displayed within this app
-          and believe it is used without proper permission or attribution,
-          please contact us immediately at {contactEmail}.
+          Images and textual content are sourced primarily from the public
+          domain, licensed third parties, or contributed by users. Proper
+          attribution is provided where feasible. If you are the copyright
+          holder of content displayed and believe it is used improperly, please
+          contact us immediately at {contactEmail}.
         </Text>
 
         <Text style={styles.subHeading}>AIS Data & Vessel Locations</Text>
         <Text style={styles.disclaimerParagraph}>
-          Vessel tracking data, including AIS data, is provided by third-party
-          providers and subject to availability. Real-time accuracy or
-          availability of AIS tracking data cannot be guaranteed. Do not rely on
-          this information for navigation or safety purposes.
+          Vessel tracking data, including AIS, relies on third-party providers
+          and its availability and real-time accuracy cannot be guaranteed. This
+          information should not be used for navigation or safety-critical
+          purposes.
         </Text>
 
         <Text style={styles.subHeading}>Ownership & Sanctions Information</Text>
@@ -114,39 +102,35 @@ const AboutScreen: React.FC = () => {
           Information regarding yacht ownership, seizure, sanctions, or other
           legal statuses is based solely on publicly available sources. The app
           makes no claims regarding the legal accuracy or current validity of
-          such information and will not accept liability for inaccuracies or
-          outdated information. Statements about sanctions or ownership do not
-          constitute allegations, and any disputes or corrections should be
-          directed towards the original public sources.
+          such information. Statements do not constitute allegations, and any
+          disputes or corrections should be directed towards the original public
+          sources.
         </Text>
 
         <Text style={styles.subHeading}>User Contributions</Text>
         <Text style={styles.disclaimerParagraph}>
-          Users contributing data or images assert they own the rights or have
-          explicit permission to share such content. By submitting any content
-          to this app, users grant the app's developers a perpetual,
+          Users contributing content assert they have the necessary rights or
+          permissions. By submitting content, users grant the app a perpetual,
           non-exclusive license to use, display, and distribute this content
-          within the app and related marketing materials.
+          within the app and related materials.
         </Text>
 
         <Text style={styles.subHeading}>Liability Limitation</Text>
         <Text style={styles.disclaimerParagraph}>
           Under no circumstances shall the app developers, owners, or associated
-          entities be liable for any damages, including without limitation,
-          direct or indirect, incidental, consequential, or punitive damages
-          arising from the use of, or inability to use, the information provided
-          by this app.
+          entities be liable for any damages arising from the use of, or
+          inability to use, the information provided by this app.
         </Text>
       </View>
     </ScrollView>
   );
 };
 
-// --- Styles ---
+// --- Styles (logo style already exists) ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F2F2F7", // Grouped list background color
+    backgroundColor: "#F2F2F7",
   },
   header: {
     alignItems: "center",
@@ -157,11 +141,12 @@ const styles = StyleSheet.create({
     borderBottomColor: "#C7C7CC",
     marginBottom: 20,
   },
-  logo: {
+  logo: { // Style for the icon
     width: 80,
     height: 80,
     marginBottom: 15,
-    borderRadius: 16,
+    borderRadius: 16, // Makes it slightly rounded if square
+    resizeMode: "contain", // Adjust resizeMode as needed ('cover', 'stretch', etc.)
   },
   appName: {
     fontSize: 24,
@@ -174,7 +159,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#8A8A8E",
   },
-  // Styles for regular content sections
   section: {
     backgroundColor: "#FFFFFF",
     paddingHorizontal: 16,
@@ -203,39 +187,36 @@ const styles = StyleSheet.create({
     marginTop: 5,
     marginBottom: 5,
   },
-  // --- Styles specifically for the Disclaimer section ---
   disclaimerSection: {
-    // Similar to section, but maybe slightly different padding/margin if needed
     backgroundColor: "#FFFFFF",
     paddingHorizontal: 16,
-    paddingTop: 15, // More top padding before title
-    paddingBottom: 10, // Less bottom padding needed after last paragraph
+    paddingTop: 15,
+    paddingBottom: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderColor: "#C7C7CC",
-    marginBottom: 30, // More space at the very bottom
+    marginBottom: 30,
   },
   disclaimerTitle: {
-    fontSize: 20, // Larger title for the whole section
+    fontSize: 20,
     fontWeight: "bold",
-    textAlign: "center", // Center the main title
-    marginBottom: 20, // Space after main title
+    textAlign: "center",
+    marginBottom: 20,
     color: "#1C1C1E",
   },
   subHeading: {
-    fontSize: 16, // Slightly smaller than sectionTitle
+    fontSize: 16,
     fontWeight: "600",
     color: "#1C1C1E",
-    marginTop: 15, // Space above each subheading
-    marginBottom: 5, // Space between subheading and paragraph
+    marginTop: 15,
+    marginBottom: 5,
   },
   disclaimerParagraph: {
-    fontSize: 14, // Slightly smaller for disclaimer text
-    lineHeight: 20, // Adjust line height
-    color: "#555", // Slightly lighter grey than regular paragraph
-    marginBottom: 15, // Space after each disclaimer paragraph
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#555",
+    marginBottom: 15,
   },
 });
 
-// --- Make sure this line is at the very end! ---
 export default AboutScreen;

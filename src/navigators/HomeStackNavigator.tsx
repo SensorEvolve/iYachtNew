@@ -1,26 +1,20 @@
 // src/navigators/HomeStackNavigator.tsx
-import React, { useEffect, useRef } from "react";
+import React from "react"; // Removed useEffect, useRef
 import {
   createNativeStackNavigator,
   NativeStackNavigationOptions,
 } from "@react-navigation/native-stack";
-import {
-  Animated,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { StyleSheet } from "react-native"; // Removed Animated, Text, TouchableOpacity, View
+// Removed Ionicons as it's no longer used here
 
 // Import screens used in this stack
 import HomeScreen from "../screens/HomeScreen";
 import DetailScreen from "../screens/DetailScreen";
-import MapScreen from "../screens/MapScreen";
+// import MapScreen from "../screens/MapScreen"; // Removed MapScreen import
 import SearchScreen from "../screens/SearchScreen";
 
 // Import types
-import { HomeStackParamList } from "../Types/NavigationParams";
+import { HomeStackParamList } from "../Types/NavigationParams"; // Ensure this type only includes HomeRoot, Detail, Search now
 import { Yacht } from "../Types/yacht";
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
@@ -40,63 +34,19 @@ interface HomeStackNavigatorProps {
   isLoading: boolean;
 }
 
-// Header button component (extracted for clarity)
-const HeaderRightButton = (
-  { navigation, pulseAnim }: { navigation: any; pulseAnim: Animated.Value },
-) => (
-  <TouchableOpacity
-    onPress={() =>
-      navigation.navigate("Map", {
-        yachts: navigation.getState().routes.find((r: any) =>
-          r.name === "HomeRoot"
-        )?.params?.yachts || [],
-      })} // Pass yachts to map
-    style={styles.headerButtonWrapper}
-    accessibilityLabel="Go to Live Tracking Map"
-  >
-    <Animated.View
-      style={[styles.headerButtonContainer, {
-        transform: [{ scale: pulseAnim }],
-      }]}
-    >
-      <Ionicons name="map-outline" size={26} color="#000" />
-      <Text style={styles.headerButtonText}>LIVE</Text>
-      <Text style={styles.headerButtonText}>TRACK</Text>
-    </Animated.View>
-  </TouchableOpacity>
-);
+// --- HeaderRightButton component REMOVED ---
 
 const HomeStackNavigator: React.FC<HomeStackNavigatorProps> = (
   { yachts, isLoading },
 ) => {
-  // --- Animation Setup for Header Icon ---
-  // Kept within this navigator as it's only used here now
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.15,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-        Animated.delay(1000),
-      ]),
-    ).start();
-  }, [pulseAnim]);
-  // --- End Animation Setup ---
+  // --- Animation Setup for Header Icon REMOVED ---
 
   return (
     // Pass initial params to HomeRoot if HomeScreen needs them directly via route.params
     <Stack.Navigator initialRouteName="HomeRoot" screenOptions={screenOptions}>
       <Stack.Screen
         name="HomeRoot"
-        options={({ navigation }) => ({
+        options={({ navigation }) => ({ // navigation prop might not be needed now unless used elsewhere
           title: "SUPER YACHTS",
           headerTitleStyle: {
             fontSize: 28,
@@ -104,13 +54,10 @@ const HomeStackNavigator: React.FC<HomeStackNavigatorProps> = (
             color: "#2B2B2B",
             letterSpacing: 0.5,
           },
-          // NO headerLeft for Credits here anymore
-          headerRight: () => (
-            <HeaderRightButton navigation={navigation} pulseAnim={pulseAnim} />
-          ),
+          // --- headerRight REMOVED ---
         })}
-        // Pass props via component prop or render prop as before
-        // Using component prop is cleaner if no complex render logic needed
+      // Pass props via component prop or render prop as before
+      // Using component prop is cleaner if no complex render logic needed
       >
         {/* Pass props down to HomeScreen */}
         {(props) => (
@@ -122,13 +69,8 @@ const HomeStackNavigator: React.FC<HomeStackNavigatorProps> = (
         component={DetailScreen}
         options={({ route }) => ({ title: route.params.yacht.name })}
       />
-      <Stack.Screen
-        name="Map"
-        options={{ title: "Live Tracking" }}
-      >
-        {/* MapScreen receives yachts via route params now */}
-        {(props) => <MapScreen {...props} yachts={props.route.params.yachts} />}
-      </Stack.Screen>
+      {/* --- Map Stack.Screen REMOVED --- */}
+      {/* The Map screen is now likely accessed via AppTabs, not this stack */}
       <Stack.Screen
         name="Search"
         options={{
@@ -144,21 +86,9 @@ const HomeStackNavigator: React.FC<HomeStackNavigatorProps> = (
   );
 };
 
-// Styles needed for the header button
+// Styles needed for the header button REMOVED
 const styles = StyleSheet.create({
-  headerButtonWrapper: {
-    marginRight: 20,
-  },
-  headerButtonContainer: {
-    alignItems: "center",
-  },
-  headerButtonText: {
-    color: "red",
-    fontSize: 9,
-    fontWeight: "bold",
-    lineHeight: 10,
-    marginTop: -1,
-  },
+  // Empty now, can be removed if nothing else needs styles here
 });
 
 export default HomeStackNavigator;

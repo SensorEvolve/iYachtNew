@@ -1,19 +1,19 @@
-import React, { useState, useRef } from "react";
+import React, { useRef, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Image,
   Dimensions,
   FlatList,
-  NativeSyntheticEvent,
+  Image,
   NativeScrollEvent,
+  NativeSyntheticEvent,
+  ScrollView,
+  StyleSheet,
+  Text,
   TouchableOpacity,
+  View,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../Types/navigation";
-import { getMainImage, getDetailImages } from "../utils/imageUtils";
+import { getDetailImages, getMainImage } from "../utils/imageUtils";
 import { FavoritesButton } from "../components/FavoritesButton";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Detail">;

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "iYachtNew",
-    "slug": "iYachtNew",
+    "name": "Yacht Tracker",
+    "slug": "Yacht Tracker",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

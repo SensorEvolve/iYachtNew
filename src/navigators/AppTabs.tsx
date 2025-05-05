@@ -7,8 +7,10 @@ import { Ionicons } from "@expo/vector-icons";
 import HomeStackNavigator from "./HomeStackNavigator";
 import MoreStackNavigator from "./MoreStackNavigator";
 import FavoritesScreen from "../screens/FavoritesScreen";
+import MapScreen from "../screens/MapScreen"; // << 1. IMPORT MAP SCREEN
 
 // Import types
+// Make sure RootTabParamList includes 'MapTab' (e.g., MapTab: undefined;)
 import { RootTabParamList } from "../Types/NavigationParams";
 import { Yacht } from "../Types/yacht";
 
@@ -17,7 +19,7 @@ const Tab = createBottomTabNavigator<RootTabParamList>();
 // Props needed if data is loaded high up (like in App.tsx)
 interface AppTabsProps {
   yachts: Yacht[];
-  isLoading: boolean;
+  isLoading: boolean; // Keep if needed by HomeStack or other tabs
 }
 
 const AppTabs: React.FC<AppTabsProps> = ({ yachts, isLoading }) => {
@@ -32,6 +34,8 @@ const AppTabs: React.FC<AppTabsProps> = ({ yachts, isLoading }) => {
             iconName = focused ? "home" : "home-outline";
           } else if (route.name === "FavoritesTab") {
             iconName = focused ? "heart" : "heart-outline";
+          } else if (route.name === "MapTab") { // << 2. ADD ICON LOGIC FOR MAP TAB
+            iconName = focused ? "map" : "map-outline";
           } else if (route.name === "MoreTab") {
             iconName = focused
               ? "ellipsis-horizontal"
@@ -51,7 +55,7 @@ const AppTabs: React.FC<AppTabsProps> = ({ yachts, isLoading }) => {
         },
       })}
     >
-      {/* Define Tabs - Order: Home, Favorites, More */}
+      {/* Define Tabs - Order: Home, Favorites, Map, More */}
       <Tab.Screen name="HomeTab" options={{ title: "Home" }}>
         {/* Pass props down to the HomeStackNavigator */}
         {() => <HomeStackNavigator yachts={yachts} isLoading={isLoading} />}
@@ -62,9 +66,19 @@ const AppTabs: React.FC<AppTabsProps> = ({ yachts, isLoading }) => {
         {(props) => <FavoritesScreen {...props} yachts={yachts} />}
       </Tab.Screen>
 
+      {/* VVVV --- 3. ADD THE NEW MAP TAB SCREEN --- VVVV */}
+      <Tab.Screen
+        name="MapTab" // Route name for the tab
+        options={{ title: "Live Track" }} // Text label for the tab
+      >
+        {/* Pass yachts prop down using render prop */}
+        {(props) => <MapScreen {...props} yachts={yachts} />}
+      </Tab.Screen>
+      {/* ^^^^ --- END OF NEW MAP TAB SCREEN --- ^^^^ */}
+
       <Tab.Screen
         name="MoreTab"
-        component={MoreStackNavigator}
+        component={MoreStackNavigator} // Assuming MoreStack doesn't need yachts directly
         options={{ title: "More" }}
       />
     </Tab.Navigator>
