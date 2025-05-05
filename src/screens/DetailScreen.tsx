@@ -10,28 +10,57 @@ import {
   Text,
   TouchableOpacity,
   View,
+  // Removed Button import as we use TouchableOpacity
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "../Types/navigation";
-import { getDetailImages, getMainImage } from "../utils/imageUtils";
-import { FavoritesButton } from "../components/FavoritesButton";
+// *** UPDATED TYPE IMPORT ***
+// Make sure the path and filename ('NavigationParams.ts') are correct
+// Use the correct ParamList for the Stack this screen belongs to
+import type { HomeStackParamList } from "../Types/NavigationParams";
+// *** END UPDATE ***
+import { getDetailImages, getMainImage } from "../utils/imageUtils"; // Adjust path if needed
+import { FavoritesButton } from "../components/FavoritesButton"; // Adjust path if needed
+// Import Alert if you want to use it in handleShowOnMap for missing MMSI
+// import { Alert } from 'react-native';
 
-type Props = NativeStackScreenProps<RootStackParamList, "Detail">;
+// *** UPDATED TYPE USAGE ***
+type Props = NativeStackScreenProps<HomeStackParamList, "Detail">;
+// *** END UPDATE ***
 
-const DetailScreen: React.FC<Props> = ({ route }) => {
+const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
+  // --- Get yacht data from route ---
   const { yacht } = route.params;
+
+  // --- Early return if yacht data is missing ---
+  if (!yacht) {
+    // Or render a more informative loading/error state
+    return (
+      <View style={styles.container}>
+        <Text>Yacht data not available.</Text>
+      </View>
+    );
+  }
+  // --- End Check ---
+
+  // --- Component State and Refs ---
   const windowWidth = Dimensions.get("window").width;
   const [activeIndex, setActiveIndex] = useState(0);
   const flatListRef = useRef<FlatList<number>>(null);
+
+  // --- Image Handling ---
   const mainImage = getMainImage(yacht.imageName);
   const detailImages = getDetailImages(yacht.imageName);
-  const images = detailImages.length > 0 ? detailImages : [mainImage];
+  const images = detailImages.length > 0 ? detailImages : [mainImage]; // Use detail images if available, else main
 
+  // --- Image Carousel Functions ---
   const renderImage = ({ item }: { item: number }) => {
+    // Note: The 'item' unused warning might be incorrect from your linter tooling
+    // as 'item' is used below in source={item}. If it persists, you can ignore it
+    // or try renaming: renderImage = ({ item: imageSource }: { item: number }) => ... source={imageSource}
     return (
       <View style={[styles.imageSlide, { width: windowWidth }]}>
         <Image
-          source={item}
+          source={item} // item is the image source from the images array
           style={[styles.heroImage, { width: windowWidth }]}
           resizeMode="contain"
         />
@@ -52,25 +81,48 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
       animated: true,
     });
   };
+
+  // --- Map Navigation Handler ---
+  const handleShowOnMap = () => {
+    if (yacht?.mmsi) {
+      // Navigate to the 'MapTab' (the name of the tab screen in AppTabs.tsx)
+      navigation.navigate("MapTab", { focusedMmsi: yacht.mmsi });
+    } else {
+      console.warn("[DetailScreen] Cannot show on map: Yacht MMSI is missing.");
+      // Optionally show an alert to the user
+      // Alert.alert("Missing Information", "Cannot show on map as the yacht's MMSI is missing.");
+    }
+  };
+
+  // --- Check for MMSI for Button State ---
+  const hasMmsi = !!yacht?.mmsi;
+
+  // --- Render Component ---
+  // REMEMBER TO CHECK ALL JSX BELOW FOR STRAY TEXT OUTSIDE <Text> TAGS
   return (
     <ScrollView style={styles.container}>
-      {/* Image Section */}
+      {/* Image Carousel Section */}
       <View style={styles.carouselContainer}>
+        {/* Image FlatList */}
         <FlatList
           ref={flatListRef}
           data={images}
           renderItem={renderImage}
+          keyExtractor={(item, index) => `image_${index}`}
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
           onScroll={onScroll}
           scrollEventThrottle={16}
         />
+
+        {/* Pagination Dots (only if multiple images) */}
         {images.length > 1 && (
           <View style={styles.pagination}>
-            {images.map((_, index) => (
+            {/* Map function with explicit types to address 'implicit any' warning */}
+            {images.map((_: number, index: number) => (
               <TouchableOpacity
-                key={index}
+                key={`dot_${index}`}
                 onPress={() => goToImage(index)}
                 style={[
                   styles.paginationDot,
@@ -80,12 +132,27 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
             ))}
           </View>
         )}
+
+        {/* Live Track Overlay Button */}
+        <TouchableOpacity
+          style={[
+            styles.liveTrackButton,
+            !hasMmsi && styles.liveTrackButtonDisabled,
+          ]}
+          onPress={handleShowOnMap}
+          disabled={!hasMmsi}
+          activeOpacity={hasMmsi ? 0.7 : 1.0}
+        >
+          <Text style={styles.liveTrackButtonText}>LIVE TRACK</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Header Section */}
+      {/* Header Section Below Image */}
       <View style={styles.headerSection}>
         <View style={styles.titleRow}>
-          <Text style={styles.yachtName}>{yacht.name}</Text>
+          <Text style={styles.yachtName} numberOfLines={1} ellipsizeMode="tail">
+            {yacht.name}
+          </Text>
           <FavoritesButton yachtId={yacht.id} />
         </View>
         <View style={styles.headerDetails}>
@@ -124,9 +191,13 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
         </View>
       </View>
 
-      {/* Technical Details */}
+      {/* Technical Details Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Technical Details</Text>
+        <View style={styles.detailRow}>
+          <Text style={styles.label}>MMSI</Text>
+          <Text style={styles.value}>{yacht.mmsi || "N/A"}</Text>
+        </View>
         <View style={styles.detailRow}>
           <Text style={styles.label}>Type</Text>
           <Text style={styles.value}>{yacht.yachtType}</Text>
@@ -175,10 +246,15 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
         <Text style={styles.sectionTitle}>Ownership</Text>
         <View style={[styles.detailRow, styles.ownerRow]}>
           <Text style={styles.label}>Owner</Text>
-          <Text style={[styles.value, styles.ownerValue]} numberOfLines={2}>
+          <Text
+            style={[styles.value, styles.ownerValue]}
+            numberOfLines={3}
+            ellipsizeMode="tail"
+          >
             {yacht.owner}
           </Text>
-        </View>
+        </View>{" "}
+        {/* Syntax typo previously fixed here */}
         {yacht.price && (
           <View style={styles.detailRow}>
             <Text style={styles.label}>Price</Text>
@@ -195,49 +271,73 @@ const DetailScreen: React.FC<Props> = ({ route }) => {
   );
 };
 
+// --- Styles ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#FFFFFF", // White background for the scroll view
   },
   carouselContainer: {
-    backgroundColor: "#f5f5f5",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    position: "relative",
+    backgroundColor: "#f0f0f0",
+    height: 300,
   },
   imageSlide: {
-    height: 300,
+    height: "100%",
     justifyContent: "center",
     alignItems: "center",
   },
   heroImage: {
-    height: 300,
+    height: "100%",
   },
   pagination: {
     flexDirection: "row",
     position: "absolute",
     bottom: 10,
     alignSelf: "center",
+    zIndex: 1,
   },
   paginationDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "rgba(255, 255, 255, 0.5)",
+    backgroundColor: "rgba(255, 255, 255, 0.6)",
     marginHorizontal: 4,
   },
   paginationDotActive: {
     backgroundColor: "#FFFFFF",
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  liveTrackButton: {
+    position: "absolute",
+    bottom: 15,
+    right: 15,
+    backgroundColor: "rgba(0, 0, 0, 0.65)",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    zIndex: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  liveTrackButtonDisabled: {
+    backgroundColor: "rgba(100, 100, 100, 0.5)",
+  },
+  liveTrackButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "bold",
   },
   headerSection: {
     padding: 16,
     backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
   },
   titleRow: {
     flexDirection: "row",
@@ -246,84 +346,86 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   yachtName: {
-    fontSize: 28,
-    fontWeight: "600",
-    color: "#000000",
+    fontSize: 26,
+    fontWeight: "bold",
+    color: "#111",
     flex: 1,
+    marginRight: 8,
   },
   headerDetails: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginTop: 4,
   },
   headerText: {
-    fontSize: 16,
-    color: "#666666",
+    fontSize: 15,
+    color: "#555",
   },
   section: {
     marginHorizontal: 16,
-    marginBottom: 24,
+    marginTop: 20,
+    marginBottom: 0,
     padding: 16,
     backgroundColor: "#FFFFFF",
-    borderRadius: 12,
+    borderRadius: 8,
     shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "600",
-    color: "#000000",
-    marginBottom: 16,
+    color: "#333",
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+    paddingBottom: 6,
   },
   detailRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
+    paddingVertical: 10,
   },
   ownerRow: {
     alignItems: "flex-start",
-    minHeight: 40,
   },
   label: {
-    fontSize: 16,
-    color: "#666666",
-    flex: 0.3,
+    fontSize: 15,
+    color: "#666",
+    flex: 0.4,
+    marginRight: 8,
   },
   value: {
-    fontSize: 16,
-    color: "#000000",
+    fontSize: 15,
+    color: "#111",
     fontWeight: "500",
+    flex: 0.6,
+    textAlign: "right",
   },
   ownerValue: {
-    flex: 0.7,
     textAlign: "right",
   },
   description: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: "#333333",
+    fontSize: 15,
+    lineHeight: 22,
+    color: "#444",
   },
   seizedContainer: {
-    marginTop: 12,
-    padding: 16,
-    backgroundColor: "#FFF0F0",
-    borderRadius: 8,
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: "#FFF3F3",
+    borderRadius: 6,
     borderLeftWidth: 4,
-    borderLeftColor: "#FF4444",
+    borderLeftColor: "#E53E3E",
   },
   seizedText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "500",
-    color: "#FF4444",
+    color: "#C53030",
   },
 });
 
