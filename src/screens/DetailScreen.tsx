@@ -10,57 +10,40 @@ import {
   Text,
   TouchableOpacity,
   View,
-  // Removed Button import as we use TouchableOpacity
+  Alert, // 1. Import Alert
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-// *** UPDATED TYPE IMPORT ***
-// Make sure the path and filename ('NavigationParams.ts') are correct
-// Use the correct ParamList for the Stack this screen belongs to
 import type { HomeStackParamList } from "../types/navigation";
-// *** END UPDATE ***
-import { getDetailImages, getMainImage } from "../utils/imageUtils"; // Adjust path if needed
-import { FavoritesButton } from "../components/FavoritesButton"; // Adjust path if needed
-// Import Alert if you want to use it in handleShowOnMap for missing MMSI
-// import { Alert } from 'react-native';
+import { getDetailImages, getMainImage } from "../utils/imageUtils";
+import { FavoritesButton } from "../components/FavoritesButton";
+import { locationService } from "../services/YachtLocationService"; // 2. Import the location service
 
-// *** UPDATED TYPE USAGE ***
 type Props = NativeStackScreenProps<HomeStackParamList, "Detail">;
-// *** END UPDATE ***
 
 const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
-  // --- Get yacht data from route ---
   const { yacht } = route.params;
 
-  // --- Early return if yacht data is missing ---
   if (!yacht) {
-    // Or render a more informative loading/error state
     return (
       <View style={styles.container}>
         <Text>Yacht data not available.</Text>
       </View>
     );
   }
-  // --- End Check ---
 
-  // --- Component State and Refs ---
   const windowWidth = Dimensions.get("window").width;
   const [activeIndex, setActiveIndex] = useState(0);
   const flatListRef = useRef<FlatList<number>>(null);
 
-  // --- Image Handling ---
   const mainImage = getMainImage(yacht.imageName);
   const detailImages = getDetailImages(yacht.imageName);
-  const images = detailImages.length > 0 ? detailImages : [mainImage]; // Use detail images if available, else main
+  const images = detailImages.length > 0 ? detailImages : [mainImage];
 
-  // --- Image Carousel Functions ---
   const renderImage = ({ item }: { item: number }) => {
-    // Note: The 'item' unused warning might be incorrect from your linter tooling
-    // as 'item' is used below in source={item}. If it persists, you can ignore it
-    // or try renaming: renderImage = ({ item: imageSource }: { item: number }) => ... source={imageSource}
     return (
       <View style={[styles.imageSlide, { width: windowWidth }]}>
         <Image
-          source={item} // item is the image source from the images array
+          source={item}
           style={[styles.heroImage, { width: windowWidth }]}
           resizeMode="contain"
         />
@@ -82,28 +65,39 @@ const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
     });
   };
 
-  // --- Map Navigation Handler ---
+  // --- THIS IS THE FIX ---
   const handleShowOnMap = () => {
     if (yacht?.mmsi) {
-      // Navigate to the 'MapTab' (the name of the tab screen in AppTabs.tsx)
-      navigation.navigate("MapTab", { focusedMmsi: yacht.mmsi });
+      // 3. Check if the location service has a position for this yacht
+      const location = locationService.getYachtLocation(yacht.mmsi);
+
+      if (location) {
+        // If a location exists, navigate to the map
+        navigation.navigate("HomeTab", { focusedMmsi: yacht.mmsi });
+      } else {
+        // If no location, show an alert to the user
+        Alert.alert(
+          "Location Unavailable",
+          `We do not have a current or recent position for ${yacht.name}.`,
+          [{ text: "OK" }]
+        );
+      }
     } else {
-      console.warn("[DetailScreen] Cannot show on map: Yacht MMSI is missing.");
-      // Optionally show an alert to the user
-      // Alert.alert("Missing Information", "Cannot show on map as the yacht's MMSI is missing.");
+      // This case handles yachts with no MMSI at all
+      Alert.alert(
+        "Tracking Not Available",
+        "This yacht does not have an MMSI number required for tracking."
+      );
     }
   };
+  // --- END OF FIX ---
 
-  // --- Check for MMSI for Button State ---
   const hasMmsi = !!yacht?.mmsi;
 
-  // --- Render Component ---
-  // REMEMBER TO CHECK ALL JSX BELOW FOR STRAY TEXT OUTSIDE <Text> TAGS
   return (
     <ScrollView style={styles.container}>
-      {/* Image Carousel Section */}
+      {/* (The rest of your JSX remains exactly the same) */}
       <View style={styles.carouselContainer}>
-        {/* Image FlatList */}
         <FlatList
           ref={flatListRef}
           data={images}
@@ -115,11 +109,8 @@ const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
           onScroll={onScroll}
           scrollEventThrottle={16}
         />
-
-        {/* Pagination Dots (only if multiple images) */}
         {images.length > 1 && (
           <View style={styles.pagination}>
-            {/* Map function with explicit types to address 'implicit any' warning */}
             {images.map((_: number, index: number) => (
               <TouchableOpacity
                 key={`dot_${index}`}
@@ -132,8 +123,6 @@ const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
             ))}
           </View>
         )}
-
-        {/* Live Track Overlay Button */}
         <TouchableOpacity
           style={[
             styles.liveTrackButton,
@@ -146,8 +135,6 @@ const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
           <Text style={styles.liveTrackButtonText}>LIVE TRACK</Text>
         </TouchableOpacity>
       </View>
-
-      {/* Header Section Below Image */}
       <View style={styles.headerSection}>
         <View style={styles.titleRow}>
           <Text style={styles.yachtName} numberOfLines={1} ellipsizeMode="tail">
@@ -160,8 +147,6 @@ const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
           <Text style={styles.headerText}>{yacht.length}m</Text>
         </View>
       </View>
-
-      {/* Performance Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Performance</Text>
         <View style={styles.detailRow}>
@@ -177,8 +162,6 @@ const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
           <Text style={styles.value}>{yacht.range} nm</Text>
         </View>
       </View>
-
-      {/* Capacity Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Capacity</Text>
         <View style={styles.detailRow}>
@@ -190,8 +173,6 @@ const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
           <Text style={styles.value}>{yacht.crew}</Text>
         </View>
       </View>
-
-      {/* Technical Details Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Technical Details</Text>
         <View style={styles.detailRow}>
@@ -221,8 +202,6 @@ const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
           <Text style={styles.value}>{yacht.flag}</Text>
         </View>
       </View>
-
-      {/* Design Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Design</Text>
         <View style={styles.detailRow}>
@@ -234,14 +213,10 @@ const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
           <Text style={styles.value}>{yacht.interiorDesigner}</Text>
         </View>
       </View>
-
-      {/* About Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>About</Text>
         <Text style={styles.description}>{yacht.shortInfo}</Text>
       </View>
-
-      {/* Ownership Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Ownership</Text>
         <View style={[styles.detailRow, styles.ownerRow]}>
@@ -253,8 +228,7 @@ const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
           >
             {yacht.owner}
           </Text>
-        </View>{" "}
-        {/* Syntax typo previously fixed here */}
+        </View>
         {yacht.price && (
           <View style={styles.detailRow}>
             <Text style={styles.label}>Price</Text>
@@ -271,11 +245,10 @@ const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
   );
 };
 
-// --- Styles ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FFFFFF", // White background for the scroll view
+    backgroundColor: "#FFFFFF",
   },
   carouselContainer: {
     position: "relative",
