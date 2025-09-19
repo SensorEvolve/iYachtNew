@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import { AppState, AppStateStatus } from "react-native";
-import { Yacht } from "../Types/yacht";
+import { Yacht } from "../types/yacht";
 
 interface Position {
   lat: number;
@@ -32,8 +32,9 @@ class ConnectionManager {
   private isConnecting = false;
 
   constructor(
-    private readonly onMessage: (event: WebSocketMessageEvent) => void,
-    private readonly onConnect: () => void,
+    // --- FIX 1: Use a generic 'any' type for the event to ensure compatibility ---
+    private readonly onMessage: (event: any) => void,
+    private readonly onConnect: () => void
   ) {
     this.setupHeartbeat();
   }
@@ -42,13 +43,10 @@ class ConnectionManager {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
     }
-
     this.heartbeatInterval = setInterval(() => {
       if (!this.lastMessageTime) return;
-
       const now = Date.now();
       const elapsed = now - this.lastMessageTime;
-
       if (elapsed > 30000 && this.ws && !this.isConnecting) {
         console.log(`${LOG_PREFIX} Connection stale, reconnecting...`);
         this.reconnect();
@@ -61,15 +59,12 @@ class ConnectionManager {
       console.log(`${LOG_PREFIX} Connection attempt already in progress`);
       return;
     }
-
     this.cleanup();
     this.isConnecting = true;
-
     try {
       console.log(
-        `${LOG_PREFIX} Creating connection (Attempt ${this.currentRetry + 1})`,
+        `${LOG_PREFIX} Creating connection (Attempt ${this.currentRetry + 1})`
       );
-
       this.ws = new WebSocket("wss://stream.aisstream.io/v0/stream");
 
       this.ws.onopen = () => {
@@ -79,7 +74,6 @@ class ConnectionManager {
         this.isConnecting = false;
         this.isSubscribed = false;
 
-        // Delay subscription to ensure connection is stable
         if (this.subscriptionTimeout) {
           clearTimeout(this.subscriptionTimeout);
         }
@@ -96,17 +90,19 @@ class ConnectionManager {
         this.onMessage(event);
       };
 
-      this.ws.onerror = (error) => {
-        console.error(`${LOG_PREFIX} Error:`, error);
+      this.ws.onerror = (error: any) => {
+        console.error(
+          `${LOG_PREFIX} Error:`,
+          error.message || "A WebSocket error occurred"
+        );
         this.isConnecting = false;
       };
 
-      this.ws.onclose = (event) => {
+      // --- FIX 2: Use a generic 'any' type for the close event ---
+      this.ws.onclose = (event: any) => {
         console.log(`${LOG_PREFIX} Connection closed: ${event.code}`);
         this.isConnecting = false;
         this.isSubscribed = false;
-
-        // Don't reconnect on normal closure (1000) or if already reconnecting
         if (event.code !== 1000 && !this.reconnectTimeout) {
           this.scheduleReconnect();
         }
@@ -122,14 +118,11 @@ class ConnectionManager {
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
     }
-
     const delay = Math.min(
       this.baseDelay * Math.pow(1.5, this.currentRetry),
-      this.maxDelay,
+      this.maxDelay
     );
-
     console.log(`${LOG_PREFIX} Reconnecting in ${delay}ms...`);
-
     this.reconnectTimeout = setTimeout(() => {
       this.currentRetry++;
       this.connect();
@@ -143,7 +136,7 @@ class ConnectionManager {
     }
   }
 
-  public send(data: any): boolean {
+  public send(data: unknown): boolean {
     if (this.ws?.readyState === WebSocket.OPEN) {
       try {
         this.ws.send(JSON.stringify(data));
@@ -159,7 +152,6 @@ class ConnectionManager {
   public cleanup() {
     this.isConnecting = false;
     this.isSubscribed = false;
-
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
     }
@@ -176,12 +168,11 @@ class ConnectionManager {
   }
 }
 
-// Rest of the component remains the same...
 const WebSocketHandler: React.FC<Props> = ({ yachts, onLocationUpdate }) => {
-  const connectionManager = useRef<ConnectionManager>();
+  const connectionManager = useRef<ConnectionManager | null>(null);
   const appState = useRef(AppState.currentState);
   const batchedUpdates = useRef<Map<string, Position>>(new Map());
-  const batchTimeout = useRef<NodeJS.Timeout>();
+  const batchTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const processBatchedUpdates = useCallback(() => {
     if (batchedUpdates.current.size > 0) {
@@ -191,56 +182,6 @@ const WebSocketHandler: React.FC<Props> = ({ yachts, onLocationUpdate }) => {
       batchedUpdates.current.clear();
     }
   }, [onLocationUpdate]);
-
-  const handleMessage = useCallback(
-    (event: WebSocketMessageEvent) => {
-      try {
-        let data;
-        if (event.data instanceof ArrayBuffer) {
-          const decoder = new TextDecoder();
-          data = JSON.parse(decoder.decode(event.data));
-        } else {
-          data = typeof event.data === "string"
-            ? JSON.parse(event.data)
-            : event.data;
-        }
-
-        if (data?.Message) {
-          const positionData = data.Message.PositionReport ||
-            data.Message.StandardClassBPositionReport;
-
-          if (positionData && data.MetaData?.MMSI) {
-            const timestamp = data.MetaData.time_utc?.split(".")[0] + "Z";
-
-            const position = {
-              lat: positionData.Latitude,
-              lon: positionData.Longitude,
-              speed: positionData.Sog || 0,
-              course: positionData.Cog || 0,
-              status: positionData.NavigationalStatus,
-              timestamp: timestamp,
-            };
-
-            if (isValidPosition(position)) {
-              // Add to batch instead of immediate update
-              batchedUpdates.current.set(String(data.MetaData.MMSI), position);
-
-              // Clear existing timeout
-              if (batchTimeout.current) {
-                clearTimeout(batchTimeout.current);
-              }
-
-              // Process batch after 100ms of no new updates
-              batchTimeout.current = setTimeout(processBatchedUpdates, 100);
-            }
-          }
-        }
-      } catch (error) {
-        console.error(`${LOG_PREFIX} Message processing error:`, error);
-      }
-    },
-    [processBatchedUpdates],
-  );
 
   const isValidPosition = (position: Position): boolean => {
     return (
@@ -255,15 +196,63 @@ const WebSocketHandler: React.FC<Props> = ({ yachts, onLocationUpdate }) => {
     );
   };
 
+  const handleMessage = useCallback(
+    (event: any) => {
+      // Using 'any' to match the constructor
+      try {
+        if (typeof event.data === "string" && event.data.startsWith("{")) {
+          const data = JSON.parse(event.data);
+
+          if (data?.Message) {
+            const positionData =
+              data.Message.PositionReport ||
+              data.Message.StandardClassBPositionReport;
+
+            if (positionData && data.MetaData?.MMSI) {
+              const timestamp = data.MetaData.time_utc?.split(".")[0] + "Z";
+              const position: Position = {
+                lat: positionData.Latitude,
+                lon: positionData.Longitude,
+                speed: positionData.Sog || 0,
+                course: positionData.Cog || 0,
+                status: positionData.NavigationalStatus,
+                timestamp: timestamp,
+              };
+
+              if (isValidPosition(position)) {
+                batchedUpdates.current.set(
+                  String(data.MetaData.MMSI),
+                  position
+                );
+                if (batchTimeout.current) {
+                  clearTimeout(batchTimeout.current);
+                }
+                batchTimeout.current = setTimeout(processBatchedUpdates, 100);
+              }
+            }
+          }
+        } else {
+          console.log(`${LOG_PREFIX} Received non-JSON message:`, event.data);
+        }
+      } catch (error) {
+        console.error(
+          `${LOG_PREFIX} Message processing error:`,
+          error,
+          "Raw data:",
+          event.data
+        );
+      }
+    },
+    [processBatchedUpdates]
+  );
+
   const sendSubscription = useCallback(() => {
     if (!connectionManager.current) return;
-
     const mmsiList = yachts
       .map((yacht) => yacht.mmsi)
       .filter((mmsi) => mmsi && /^\d+$/.test(mmsi));
 
     console.log(`${LOG_PREFIX} Subscribing to ${mmsiList.length} vessels`);
-
     const message = {
       APIKey: process.env.EXPO_PUBLIC_AISSTREAM_API_KEY,
       BoundingBoxes: [
@@ -294,19 +283,15 @@ const WebSocketHandler: React.FC<Props> = ({ yachts, onLocationUpdate }) => {
   }, []);
 
   useEffect(() => {
-    // Initialize connection manager
     connectionManager.current = new ConnectionManager(
       handleMessage,
-      sendSubscription,
+      sendSubscription
     );
     connectionManager.current.connect();
-
-    // Setup app state listener
     const appStateSubscription = AppState.addEventListener(
       "change",
-      handleAppStateChange,
+      handleAppStateChange
     );
-
     return () => {
       connectionManager.current?.cleanup();
       appStateSubscription.remove();

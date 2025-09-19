@@ -60,7 +60,8 @@ const MoreScreen: React.FC = () => {
           // Navigate to the screen defined in the item object
           // We use 'as keyof MoreStackParamList' for stricter TypeScript checking
           onPress={() =>
-            navigation.navigate(item.screen as keyof MoreStackParamList)}
+            navigation.navigate(item.screen as keyof MoreStackParamList)
+          }
           activeOpacity={0.7} // Provide visual feedback on touch
         >
           {/* Icon */}

@@ -16,7 +16,7 @@ import {
   ViewStyle,
   StyleProp,
 } from "react-native";
-import { Yacht } from "../Types/yacht";
+import { Yacht } from "../types/yacht";
 import { getDetailImages } from "../utils/imageUtils";
 
 interface YachtDetailProps {
@@ -63,7 +63,7 @@ const YachtDetail: React.FC<YachtDetailProps> = ({ yacht }) => {
     },
     onPanResponderMove: (
       evt: GestureResponderEvent,
-      _: PanResponderGestureState,
+      _: PanResponderGestureState
     ) => {
       const touches = evt.nativeEvent.changedTouches;
       if (touches && touches.length === 2) {
@@ -72,7 +72,7 @@ const YachtDetail: React.FC<YachtDetailProps> = ({ yacht }) => {
 
         const distance = Math.sqrt(
           Math.pow(touchA.pageX - touchB.pageX, 2) +
-            Math.pow(touchA.pageY - touchB.pageY, 2),
+            Math.pow(touchA.pageY - touchB.pageY, 2)
         );
 
         const newScale = Math.max(1, Math.min(distance / 200, 3));

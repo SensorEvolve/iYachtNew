@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   StyleSheet,
@@ -7,61 +7,66 @@ import {
   Platform,
   TouchableOpacity,
   SafeAreaView,
-  Animated,
   FlatList,
   Image,
+  Keyboard,
 } from "react-native";
 import { BlurView } from "expo-blur";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "../Types/navigation";
-import type { Yacht } from "../Types/yacht";
+import type { HomeStackParamList } from "../types/navigation";
+import type { Yacht } from "../types/yacht";
 import { getMainImage } from "../utils/imageUtils";
 
-type Props = NativeStackScreenProps<RootStackParamList, "Search"> & {
-  yachts: Yacht[];
-};
+type Props = NativeStackScreenProps<HomeStackParamList, "Search">;
+
 const SearchScreen: React.FC<Props> = ({ navigation, route }) => {
+  const allYachts = route.params?.yachts || [];
+
   const [searchQuery, setSearchQuery] = useState("");
-  const [yachts, setYachts] = useState<Yacht[]>([]);
   const [filteredYachts, setFilteredYachts] = useState<Yacht[]>([]);
-  const [slideAnim] = useState(new Animated.Value(0));
+  const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (route.params?.yachts) {
-      const initialYachts = route.params.yachts;
-      setYachts(initialYachts);
-      setFilteredYachts([]);
-    }
-  }, [route.params?.yachts]);
-
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-
-    if (query.trim() === "") {
-      setFilteredYachts([]);
-      return;
+    if (debounceTimeout.current) {
+      clearTimeout(debounceTimeout.current);
     }
 
-    const filtered = yachts.filter((yacht) => {
-      const searchFields = [
-        yacht.name,
-        yacht.builtBy,
-        yacht.owner,
-        yacht.seizedBy,
-        yacht.shortInfo, // Added About text
-        yacht.exteriorDesigner, // Added exterior designer
-        yacht.interiorDesigner, // Added interior designer
-      ].map((field) => (field || "").toLowerCase());
+    debounceTimeout.current = setTimeout(() => {
+      if (searchQuery.trim() === "") {
+        setFilteredYachts([]);
+        return;
+      }
 
-      const queryLower = query.toLowerCase();
-      return searchFields.some((field) => field.includes(queryLower));
-    });
+      const filtered = allYachts.filter((yacht) => {
+        const searchFields = [
+          yacht.name,
+          yacht.builtBy,
+          yacht.owner,
+          yacht.seizedBy,
+          yacht.shortInfo,
+          yacht.exteriorDesigner,
+          yacht.interiorDesigner,
+        ].map((field) => (field || "").toLowerCase());
 
-    setFilteredYachts(filtered);
-  };
+        const queryLower = searchQuery.toLowerCase();
+        return searchFields.some((field) => field.includes(queryLower));
+      });
+
+      setFilteredYachts(filtered);
+    }, 300);
+
+    return () => {
+      if (debounceTimeout.current) {
+        clearTimeout(debounceTimeout.current);
+      }
+    };
+  }, [searchQuery, allYachts]);
 
   const handleYachtPress = (yacht: Yacht) => {
-    navigation.navigate("Detail", { yacht });
+    // This is the updated line:
+    // It replaces the current modal screen with the Detail screen,
+    // providing a cleaner navigation flow.
+    navigation.replace("Detail", { yacht });
   };
 
   const handleDismiss = () => {
@@ -96,7 +101,7 @@ const SearchScreen: React.FC<Props> = ({ navigation, route }) => {
 
   return (
     <View style={styles.container}>
-      <BlurView intensity={25} tint="light" style={styles.blurContainer}>
+      <BlurView intensity={25} tint="light" style={StyleSheet.absoluteFill}>
         <SafeAreaView style={styles.contentContainer}>
           <View style={styles.searchHeader}>
             <TouchableOpacity
@@ -108,9 +113,9 @@ const SearchScreen: React.FC<Props> = ({ navigation, route }) => {
 
             <TextInput
               style={styles.searchInput}
-              placeholder="Search yachts, owners..."
+              placeholder="Search yachts, owners, designers..."
               value={searchQuery}
-              onChangeText={handleSearch}
+              onChangeText={setSearchQuery}
               returnKeyType="search"
               clearButtonMode="while-editing"
               autoCapitalize="none"
@@ -125,9 +130,10 @@ const SearchScreen: React.FC<Props> = ({ navigation, route }) => {
                 <FlatList
                   data={filteredYachts}
                   renderItem={renderYachtItem}
-                  keyExtractor={(item) => item.id}
+                  keyExtractor={(item) => item.id.toString()}
                   contentContainerStyle={styles.resultsList}
                   showsVerticalScrollIndicator={false}
+                  onScrollBeginDrag={() => Keyboard.dismiss()}
                 />
               ) : (
                 <Text style={styles.noResults}>No yachts found</Text>
@@ -143,14 +149,11 @@ const SearchScreen: React.FC<Props> = ({ navigation, route }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
-  blurContainer: {
-    flex: 1,
-    backgroundColor: "rgba(255,255,255,0.95)",
+    backgroundColor: "transparent",
   },
   contentContainer: {
     flex: 1,
+    paddingTop: Platform.OS === "android" ? 25 : 0,
   },
   searchHeader: {
     padding: 15,
@@ -158,6 +161,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderBottomWidth: 1,
     borderBottomColor: "rgba(0,0,0,0.1)",
+    backgroundColor: "rgba(255,255,255,0.7)",
   },
   dismissButton: {
     width: 30,

@@ -4,7 +4,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NavigationContainer } from "@react-navigation/native";
 import { FavoritesProvider } from "./src/contexts/FavoritesContext";
 import { loadYachtData } from "./src/utils/dataParser";
-import { Yacht } from "./src/Types/yacht";
+import { Yacht } from "./src/types/yacht";
 import AppTabs from "./src/navigators/AppTabs"; // Import the new Tab Navigator
 
 // You might want to add a loading indicator view

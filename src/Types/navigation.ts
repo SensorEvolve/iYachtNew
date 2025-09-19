@@ -1,4 +1,3 @@
-// src/Types/NavigationParams.ts
 import { Yacht } from "./yacht"; // Ensure path is correct
 
 // Params for the screens within the Home stack

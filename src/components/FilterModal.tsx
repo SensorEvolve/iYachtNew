@@ -1,302 +1,92 @@
 import React, { useState } from "react";
-import {
-  View,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-} from "react-native";
-import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { RootStackParamList } from "../../App";
-import YachtList from "../components/YachtList";
-import FilterModal from "../components/FilterModal";
-import { Yacht, YachtFilters } from "../Types/yacht";
-import { Ionicons } from "@expo/vector-icons";
+import { Modal, View, Text, StyleSheet, TextInput, Button } from "react-native";
+import { YachtFilters } from "../types/yacht";
 
-interface Props extends NativeStackScreenProps<RootStackParamList, "Home"> {
-  yachts: Yacht[];
-  isLoading: boolean;
+// Define the props that FilterModal will accept
+interface FilterModalProps {
+  visible: boolean;
+  onClose: () => void;
+  onApply: (filters: YachtFilters) => void;
+  initialFilters: YachtFilters;
 }
 
-const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
-  // State for quick filters
-  const [quickFilters, setQuickFilters] = useState({
-    byLength: false,
-    bySpeed: false,
-    byPrice: false,
-    bySeized: false,
-  });
+const FilterModal: React.FC<FilterModalProps> = ({
+  visible,
+  onClose,
+  onApply,
+  initialFilters,
+}) => {
+  const [filters, setFilters] = useState<YachtFilters>(initialFilters);
 
-  // State for detailed filters modal
-  const [filterModalVisible, setFilterModalVisible] = useState(false);
-  const [detailedFilters, setDetailedFilters] = useState<YachtFilters>({});
-
-  const handleYachtPress = (yacht: Yacht) => {
-    navigation.navigate("Detail", { yacht });
+  const handleApply = () => {
+    onApply(filters);
+    onClose();
   };
 
-  // Helper function to safely convert string to number
-  const parseNumericValue = (value: string): number => {
-    const numericString = value.replace(/[^\d.]/g, "");
-    const parsedValue = parseFloat(numericString);
-    return isNaN(parsedValue) ? 0 : parsedValue;
-  };
-
-  const getFilteredYachts = () => {
-    let filtered = [...yachts];
-
-    // Apply quick filters first
-    if (quickFilters.byLength) {
-      filtered.sort((a, b) => {
-        const lengthA = parseNumericValue(a.length);
-        const lengthB = parseNumericValue(b.length);
-        return lengthB - lengthA;
-      });
-    }
-
-    if (quickFilters.bySpeed) {
-      filtered.sort((a, b) => {
-        const speedA = parseNumericValue(a.topSpeed);
-        const speedB = parseNumericValue(b.topSpeed);
-        return speedB - speedA;
-      });
-    }
-
-    if (quickFilters.byPrice) {
-      filtered.sort((a, b) => {
-        const priceA = parseNumericValue(a.price);
-        const priceB = parseNumericValue(b.price);
-        return priceB - priceA;
-      });
-    }
-
-    if (quickFilters.bySeized) {
-      filtered = filtered.filter(
-        (yacht) => yacht.seizedBy && yacht.seizedBy.trim() !== "",
-      );
-    }
-
-    // Then apply detailed filters
-    if (detailedFilters.lengthMin || detailedFilters.lengthMax) {
-      filtered = filtered.filter((yacht) => {
-        const length = parseNumericValue(yacht.length);
-        const meetsMin =
-          !detailedFilters.lengthMin || length >= detailedFilters.lengthMin;
-        const meetsMax =
-          !detailedFilters.lengthMax || length <= detailedFilters.lengthMax;
-        return meetsMin && meetsMax;
-      });
-    }
-
-    if (detailedFilters.yearMin || detailedFilters.yearMax) {
-      filtered = filtered.filter((yacht) => {
-        const year = parseNumericValue(yacht.delivered);
-        const meetsMin =
-          !detailedFilters.yearMin || year >= detailedFilters.yearMin;
-        const meetsMax =
-          !detailedFilters.yearMax || year <= detailedFilters.yearMax;
-        return meetsMin && meetsMax;
-      });
-    }
-
-    if (detailedFilters.builder) {
-      filtered = filtered.filter((yacht) =>
-        yacht.builtBy
-          .toLowerCase()
-          .includes(detailedFilters.builder!.toLowerCase()),
-      );
-    }
-
-    if (detailedFilters.yachtType) {
-      filtered = filtered.filter((yacht) =>
-        yacht.yachtType
-          .toLowerCase()
-          .includes(detailedFilters.yachtType!.toLowerCase()),
-      );
-    }
-
-    return filtered;
-  };
-
-  // Quick filter toggle handlers
-  const toggleLengthFilter = () => {
-    setQuickFilters((prev) => ({
-      byLength: !prev.byLength,
-      bySpeed: false,
-      byPrice: false,
-      bySeized: false,
+  // Helper to update a specific filter value
+  const updateFilter = (key: keyof YachtFilters, value: string) => {
+    const numValue = parseInt(value, 10);
+    setFilters((prev) => ({
+      ...prev,
+      [key]: isNaN(numValue) ? undefined : numValue,
     }));
-  };
-
-  const toggleSpeedFilter = () => {
-    setQuickFilters((prev) => ({
-      byLength: false,
-      bySpeed: !prev.bySpeed,
-      byPrice: false,
-      bySeized: false,
-    }));
-  };
-
-  const togglePriceFilter = () => {
-    setQuickFilters((prev) => ({
-      byLength: false,
-      bySpeed: false,
-      byPrice: !prev.byPrice,
-      bySeized: false,
-    }));
-  };
-
-  const toggleSeizedFilter = () => {
-    setQuickFilters((prev) => ({
-      byLength: false,
-      bySpeed: false,
-      byPrice: false,
-      bySeized: !prev.bySeized,
-    }));
-  };
-
-  // Filter modal handlers
-  const handleApplyFilters = (filters: YachtFilters) => {
-    setDetailedFilters(filters);
-    setFilterModalVisible(false);
   };
 
   return (
-    <View style={styles.container}>
-      {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" />
-        </View>
-      ) : (
-        <>
-          <View style={styles.filterContainer}>
-            <TouchableOpacity
-              onPress={toggleLengthFilter}
-              style={[
-                styles.filterButton,
-                quickFilters.byLength && styles.activeFilter,
-              ]}
-            >
-              <Ionicons
-                name="resize"
-                size={24}
-                color={quickFilters.byLength ? "#000" : "#666"}
-              />
-              {quickFilters.byLength && <View style={styles.underline} />}
-            </TouchableOpacity>
+    <Modal
+      animationType="slide"
+      transparent={true}
+      visible={visible}
+      onRequestClose={onClose}
+    >
+      <View style={styles.centeredView}>
+        <View style={styles.modalView}>
+          <Text style={styles.modalTitle}>Detailed Filters</Text>
 
-            <TouchableOpacity
-              onPress={toggleSpeedFilter}
-              style={[
-                styles.filterButton,
-                quickFilters.bySpeed && styles.activeFilter,
-              ]}
-            >
-              <Ionicons
-                name="speedometer"
-                size={24}
-                color={quickFilters.bySpeed ? "#000" : "#666"}
-              />
-              {quickFilters.bySpeed && <View style={styles.underline} />}
-            </TouchableOpacity>
+          {/* Example Filter: Min Length */}
+          <Text style={styles.label}>Min Length (m)</Text>
+          <TextInput
+            style={styles.input}
+            keyboardType="numeric"
+            placeholder="e.g., 50"
+            onChangeText={(text) => updateFilter("lengthMin", text)}
+            defaultValue={filters.lengthMin?.toString()}
+          />
 
-            <TouchableOpacity
-              onPress={togglePriceFilter}
-              style={[
-                styles.filterButton,
-                quickFilters.byPrice && styles.activeFilter,
-              ]}
-            >
-              <Ionicons
-                name="cash"
-                size={24}
-                color={quickFilters.byPrice ? "#000" : "#666"}
-              />
-              {quickFilters.byPrice && <View style={styles.underline} />}
-            </TouchableOpacity>
+          {/* Example Filter: Max Length */}
+          <Text style={styles.label}>Max Length (m)</Text>
+          <TextInput
+            style={styles.input}
+            keyboardType="numeric"
+            placeholder="e.g., 100"
+            onChangeText={(text) => updateFilter("lengthMax", text)}
+            defaultValue={filters.lengthMax?.toString()}
+          />
 
-            <TouchableOpacity
-              onPress={toggleSeizedFilter}
-              style={[
-                styles.filterButton,
-                quickFilters.bySeized && styles.activeFilter,
-              ]}
-            >
-              <Ionicons
-                name="warning"
-                size={24}
-                color={quickFilters.bySeized ? "#000" : "#666"}
-              />
-              {quickFilters.bySeized && <View style={styles.underline} />}
-            </TouchableOpacity>
+          {/* Add more TextInput fields for yearMin, yearMax, builder, etc. here */}
+
+          <View style={styles.buttonContainer}>
+            <Button title="Cancel" onPress={onClose} color="#666" />
+            <Button title="Apply Filters" onPress={handleApply} />
           </View>
-          <YachtList
-            yachts={getFilteredYachts()}
-            onYachtPress={handleYachtPress}
-          />
-          <TouchableOpacity
-            style={styles.searchButton}
-            onPress={() => setFilterModalVisible(true)}
-          >
-            <Ionicons name="search" size={24} color="white" />
-          </TouchableOpacity>
-          //Note ERROR, check with AI.
-          <FilterModal
-            visible={filterModalVisible}
-            onClose={() => setFilterModalVisible(false)}
-            onApply={handleApplyFilters}
-            filters={detailedFilters}
-          />
-        </>
-      )}
-    </View>
+        </View>
+      </View>
+    </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
-  },
-  loadingContainer: {
+  centeredView: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
-  filterContainer: {
-    flexDirection: "row",
-    justifyContent: "space-evenly",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-    marginTop: 10,
-  },
-  filterButton: {
-    padding: 10,
-    alignItems: "center",
-    position: "relative",
-  },
-  activeFilter: {
-    // Additional styling for active state if needed
-  },
-  underline: {
-    position: "absolute",
-    bottom: 0,
-    left: 5,
-    right: 5,
-    height: 2,
-    backgroundColor: "#000",
-    borderRadius: 1,
-  },
-  searchButton: {
-    position: "absolute",
-    right: 20,
-    bottom: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "black",
-    justifyContent: "center",
+  modalView: {
+    margin: 20,
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 35,
     alignItems: "center",
     shadowColor: "#000",
     shadowOffset: {
@@ -304,9 +94,37 @@ const styles = StyleSheet.create({
       height: 2,
     },
     shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowRadius: 4,
     elevation: 5,
+    width: "80%",
+  },
+  modalTitle: {
+    marginBottom: 15,
+    textAlign: "center",
+    fontSize: 20,
+    fontWeight: "bold",
+  },
+  label: {
+    alignSelf: "flex-start",
+    marginTop: 10,
+    fontSize: 16,
+  },
+  input: {
+    height: 40,
+    borderColor: "gray",
+    borderWidth: 1,
+    borderRadius: 5,
+    marginTop: 5,
+    marginBottom: 10,
+    width: "100%",
+    paddingHorizontal: 10,
+  },
+  buttonContainer: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    width: "100%",
+    marginTop: 20,
   },
 });
 
-export default HomeScreen;
+export default FilterModal;

@@ -1,6 +1,6 @@
 import { Asset } from "expo-asset";
-import * as FileSystem from "expo-file-system";
-import { Yacht, CSV_COLUMNS, YachtLocation } from "../Types/yacht";
+import * as FileSystem from "expo-file-system/legacy";
+import { Yacht, CSV_COLUMNS, YachtLocation } from "../types/yacht";
 import { locationService } from "../services/YachtLocationService";
 
 const LOG_PREFIX = "📝 [DataParser]";

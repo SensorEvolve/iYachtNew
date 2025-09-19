@@ -16,7 +16,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 // *** UPDATED TYPE IMPORT ***
 // Make sure the path and filename ('NavigationParams.ts') are correct
 // Use the correct ParamList for the Stack this screen belongs to
-import type { HomeStackParamList } from "../Types/NavigationParams";
+import type { HomeStackParamList } from "../types/navigation";
 // *** END UPDATE ***
 import { getDetailImages, getMainImage } from "../utils/imageUtils"; // Adjust path if needed
 import { FavoritesButton } from "../components/FavoritesButton"; // Adjust path if needed

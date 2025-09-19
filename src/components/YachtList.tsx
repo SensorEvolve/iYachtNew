@@ -17,7 +17,7 @@ import {
   Animated,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import type { Yacht } from "../Types/yacht";
+import type { Yacht } from "../types/yacht";
 import { getMainImage } from "../utils/imageUtils";
 
 interface YachtListProps {
@@ -51,7 +51,7 @@ const SkeletonItem = () => {
           duration: 1000,
           useNativeDriver: true,
         }),
-      ]),
+      ])
     ).start();
   }, []);
 
@@ -89,13 +89,16 @@ const SkeletonList = () => {
 
 // *** YachtItem Modified for Test 1: Removed internal loading state ***
 const YachtItem = memo(
-  ({ yacht, onPress /* Removed onLoadStart, onLoadEnd from props */ }: YachtItemProps) => {
+  ({
+    yacht,
+    onPress /* Removed onLoadStart, onLoadEnd from props */,
+  }: YachtItemProps) => {
     // const [isLoading, setIsLoading] = useState(true); // <-- REMOVED
     const imageSource = getMainImage(yacht.imageName);
 
     // Keep console log for local testing if desired
     console.log(
-      `(Local Log) YachtItem Render: ${yacht.name}, ImageName: ${yacht.imageName}, Source: ${imageSource}`,
+      `(Local Log) YachtItem Render: ${yacht.name}, ImageName: ${yacht.imageName}, Source: ${imageSource}`
     );
 
     // const handleLoadStart = useCallback(() => { ... }, []); // <-- REMOVED
@@ -104,7 +107,11 @@ const YachtItem = memo(
 
     return (
       <View style={styles.cardWrapper}>
-        <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.95}>
+        <TouchableOpacity
+          style={styles.card}
+          onPress={onPress}
+          activeOpacity={0.95}
+        >
           <View style={styles.cardContent}>
             <View style={styles.imageSection}>
               {/* {isLoading && ( ... <ActivityIndicator ... /> ... )} */
@@ -121,7 +128,7 @@ const YachtItem = memo(
                   // Optional basic error logging
                   console.error(
                     `IMAGE LOAD ERROR for ${yacht.name} (Source: ${imageSource}):`,
-                    error.nativeEvent.error,
+                    error.nativeEvent.error
                   );
                 }}
               />
@@ -164,7 +171,7 @@ const YachtItem = memo(
         </TouchableOpacity>
       </View>
     );
-  },
+  }
 );
 
 // --- YachtList component remains mostly unchanged ---
@@ -184,7 +191,7 @@ const YachtList = forwardRef<FlatList, YachtListProps>(
           // No longer passing onLoadStart/onLoadEnd down
         />
       ),
-      [onYachtPress], // Dependencies updated
+      [onYachtPress] // Dependencies updated
     );
 
     const keyExtractor = useCallback((item: Yacht) => item.id, []);
@@ -207,7 +214,7 @@ const YachtList = forwardRef<FlatList, YachtListProps>(
         initialNumToRender={4}
       />
     );
-  },
+  }
 );
 // --- End of YachtList component ---
 

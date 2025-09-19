@@ -2,8 +2,8 @@ import React, { useState, useRef, useEffect } from "react";
 import { View, StyleSheet, ActivityIndicator } from "react-native";
 import WebView from "react-native-webview";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { RootStackParamList } from "../Types/navigation";
-import { Yacht } from "../Types/yacht";
+import { RootTabParamList } from "../types/navigation";
+import { Yacht } from "../types/yacht";
 import WebSocketHandler from "../components/WebSocketHandler";
 import { locationService } from "../services/YachtLocationService";
 
@@ -22,7 +22,9 @@ interface Locations {
   [mmsi: string]: Position;
 }
 
-type Props = NativeStackScreenProps<RootStackParamList, "Map"> & {
+// *** MODIFIED TYPE ***
+// We now include `route` in the props to get navigation parameters.
+type Props = NativeStackScreenProps<RootTabParamList, "Map"> & {
   yachts: Yacht[];
 };
 
@@ -34,10 +36,8 @@ const MAP_CONFIG = {
     lon: 17.19905,
     zoom: 4,
   },
-
   tileLayer:
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-  //  tileLayer: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
   statusCodes: {
     0: "Under way",
     1: "At anchor",
@@ -52,24 +52,14 @@ const MAP_CONFIG = {
   },
 };
 
-// Helper function to safely escape JSON
-const escapeString = (str: string) => {
-  return str
-    .replace(/[\\]/g, "\\\\")
-    .replace(/[\"]/g, '\\"')
-    .replace(/[\/]/g, "\\/")
-    .replace(/[\b]/g, "\\b")
-    .replace(/[\f]/g, "\\f")
-    .replace(/[\n]/g, "\\n")
-    .replace(/[\r]/g, "\\r")
-    .replace(/[\t]/g, "\\t");
-};
-
-const MapScreen: React.FC<Props> = ({ yachts }) => {
+// *** MODIFIED COMPONENT SIGNATURE ***
+const MapScreen: React.FC<Props> = ({ route, yachts }) => {
   const [locations, setLocations] = useState<Locations>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [isMapReady, setIsMapReady] = useState(false);
   const webViewRef = useRef<WebView>(null);
 
+  // Effect 1: Load initial locations from the service
   useEffect(() => {
     const loadInitialLocations = async () => {
       try {
@@ -89,18 +79,22 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
               source: loc.source,
             },
           }),
-          {},
+          {}
         );
-
         setLocations(initialLocations);
-        updateMap(initialLocations);
       } catch (error) {
         console.error(`${LOG_PREFIX} Error loading locations:`, error);
       }
     };
-
     loadInitialLocations();
   }, []);
+
+  // Effect 2: Update the map only when it's ready and locations are available
+  useEffect(() => {
+    if (isMapReady && Object.keys(locations).length > 0) {
+      updateMap(locations);
+    }
+  }, [isMapReady, locations]);
 
   const handleLocationUpdate = async (mmsi: string, location: Position) => {
     try {
@@ -112,9 +106,7 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
           timestamp: location.timestamp || new Date().toISOString(),
         },
       };
-
       setLocations(newLocations);
-      updateMap(newLocations);
       await locationService.updateLocation(mmsi, location);
     } catch (error) {
       console.error(`${LOG_PREFIX} Error updating location:`, error);
@@ -125,14 +117,7 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
     if (webViewRef.current) {
       try {
         const safeLocations = JSON.stringify(newLocations);
-        const script = `
-          try {
-            window.updateLocations('${escapeString(safeLocations)}');
-          } catch(e) {
-            console.error('Error in updateLocations:', e);
-          }
-          true;
-        `;
+        const script = `window.updateLocations(${safeLocations}); true;`;
         webViewRef.current.injectJavaScript(script);
       } catch (error) {
         console.error(`${LOG_PREFIX} Error preparing update:`, error);
@@ -142,12 +127,14 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
 
   const handleWebViewMessage = (event: any) => {
     try {
-      if (event.nativeEvent.data === "mapReady") {
+      const messageData = event.nativeEvent.data;
+      if (messageData === "mapReady") {
         setIsLoading(false);
+        setIsMapReady(true);
         return;
       }
 
-      const data = JSON.parse(event.nativeEvent.data);
+      const data = JSON.parse(messageData);
       if (data.type === "yacht_selected") {
         console.log(`${LOG_PREFIX} Yacht selected:`, data.mmsi);
       }
@@ -155,8 +142,12 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
       console.error(`${LOG_PREFIX} Message error:`, error);
     }
   };
-  //Belove theis is the HTML BOCK
-  const getMapHTML = () => `
+
+  // *** NEW: GET FOCUSED MMSI FROM ROUTE PARAMS ***
+  const focusedMmsi = route.params?.focusedMmsi;
+
+  // *** MODIFIED HTML GENERATOR FUNCTION ***
+  const getMapHTML = (mmsiToFocus?: string) => `
     <!DOCTYPE html>
     <html>
       <head>
@@ -201,9 +192,9 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
             text-align: center;
             white-space: nowrap;
             text-shadow: 1px 1px 4px rgba(0,0,0,0.9);
-            background-color: rgba(0, 0, 0, 0.6); /* Add dark semi-transparent background */
-            padding: 3px 6px;                   /* Add some padding */
-            border-radius: 4px;                 /* Add rounded corners */
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 3px 6px;
+            border-radius: 4px;
             opacity: 0;
             transition: opacity 0.3s ease;
             pointer-events: none;
@@ -231,20 +222,24 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
             zoomControl: true,
             attributionControl: false
           }).setView([${MAP_CONFIG.initialView.lat}, ${
-            MAP_CONFIG.initialView.lon
-          }], ${MAP_CONFIG.initialView.zoom});
+    MAP_CONFIG.initialView.lon
+  }], ${MAP_CONFIG.initialView.zoom});
 
-          L.tileLayer('${MAP_CONFIG.tileLayer}', { attribution: false }).addTo(map);
+          L.tileLayer('${
+            MAP_CONFIG.tileLayer
+          }', { attribution: false }).addTo(map);
 
           const markers = {};
           const yachts = ${JSON.stringify(yachts)};
           const statusCodes = ${JSON.stringify(MAP_CONFIG.statusCodes)};
           let selectedMarkers = new Set();
 
+          // *** NEW: Get the focused MMSI from React Native ***
+          const focusedMmsi = ${mmsiToFocus ? `'${mmsiToFocus}'` : "null"};
+
           function getIconSize(zoomLevel, yachtLength) {
             const MIN_SIZE = 8;
             const MAX_SIZE = 150;
-
             if (zoomLevel >= 14) {
               const metersPerPixel = METERS_PER_PIXEL[zoomLevel] || METERS_PER_PIXEL[14];
               return Math.min(MAX_SIZE, Math.max(MIN_SIZE, yachtLength / metersPerPixel));
@@ -262,22 +257,15 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
           }
 
           function sanitizeHtml(str) {
-            return String(str)
-              .replace(/&/g, '&amp;')
-              .replace(/</g, '&lt;')
-              .replace(/>/g, '&gt;')
-              .replace(/"/g, '&quot;')
-              .replace(/'/g, '&#39;');
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
           }
 
           function createYachtIcon(yacht, loc, isSelected = false) {
             const size = getIconSize(map.getZoom(), parseFloat(yacht.length));
             const fontSize = getFontSize(map.getZoom());
             const iconClass = yacht.seizedBy ? 'seized' :
-                           yacht.yachtType.toLowerCase().includes('sail') ? 'sailing' : 'motor';
-
-            const isRecent = (new Date() - new Date(loc.timestamp)) < 60 * 60 * 1000; // Within last hour
-
+                              yacht.yachtType.toLowerCase().includes('sail') ? 'sailing' : 'motor';
+            const isRecent = (new Date() - new Date(loc.timestamp)) < 60 * 60 * 1000;
             const infoHtml = \`
               <div class="yacht-info" style="font-size: \${fontSize}px">
                 <strong>\${sanitizeHtml(yacht.name)}</strong><br>
@@ -288,14 +276,12 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
                 \${loc.source === "MANUAL" ? '<br><span class="manual-source">Stored position</span>' : ''}
               </div>
             \`;
-
             return L.divIcon({
               className: \`yacht-icon yacht-icon-\${iconClass} \${isSelected ? 'selected' : ''} \${isRecent ? 'recent' : ''}\`,
               html: \`
                 <div style="position: relative;">
                   \${infoHtml}
-                  <svg width="\${size}" height="\${size}" viewBox="0 0 24 24"
-                       style="transform: rotate(\${loc.course || 0}deg)">
+                  <svg width="\${size}" height="\${size}" viewBox="0 0 24 24" style="transform: rotate(\${loc.course || 0}deg)">
                     <path d="M12 2L18 20H6L12 2z" fill="var(--color)"/>
                     <path d="M9 14h6l-3 6-3-6z" fill="var(--color)" opacity="0.6"/>
                   </svg>
@@ -317,7 +303,9 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
           map.on('click', () => {
             selectedMarkers.forEach(mmsi => {
               const marker = markers[mmsi];
-              marker.setIcon(createYachtIcon(marker.yacht, marker.location, false));
+              if (marker) {
+                marker.setIcon(createYachtIcon(marker.yacht, marker.location, false));
+              }
             });
             selectedMarkers.clear();
           });
@@ -325,11 +313,9 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
           window.updateLocations = function(data) {
             try {
               const locations = typeof data === 'string' ? JSON.parse(data) : data;
-
               Object.entries(locations).forEach(([mmsi, loc]) => {
                 const yacht = yachts.find(y => y.mmsi === mmsi);
                 if (!yacht || !loc.lat || !loc.lon) return;
-
                 if (markers[mmsi]) {
                   markers[mmsi].setLatLng([loc.lat, loc.lon]);
                   markers[mmsi].location = loc;
@@ -340,13 +326,18 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
                   }).on('click', (e) => {
                     e.originalEvent.stopPropagation();
                     const isSelected = selectedMarkers.has(mmsi);
+                    // Deselect all others first
+                    selectedMarkers.forEach(id => {
+                        const oldMarker = markers[id];
+                        if (oldMarker && id !== mmsi) {
+                            oldMarker.setIcon(createYachtIcon(oldMarker.yacht, oldMarker.location, false));
+                        }
+                    });
+                    selectedMarkers.clear();
 
-                    if (isSelected) {
-                      selectedMarkers.delete(mmsi);
-                    } else {
+                    if (!isSelected) {
                       selectedMarkers.add(mmsi);
                     }
-
                     marker.setIcon(createYachtIcon(yacht, loc, !isSelected));
 
                     window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -354,7 +345,6 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
                       mmsi: mmsi
                     }));
                   }).addTo(map);
-
                   marker.yacht = yacht;
                   marker.location = loc;
                   markers[mmsi] = marker;
@@ -365,22 +355,62 @@ const MapScreen: React.FC<Props> = ({ yachts }) => {
             }
           };
 
+          // *** NEW: Function to focus and select a yacht marker ***
+          function focusOnYacht(mmsi) {
+            const marker = markers[mmsi];
+            if (marker) {
+              map.setView([marker.location.lat, marker.location.lon], 12); // Zoom to a closer level
+
+              // Deselect any other marker
+              selectedMarkers.forEach(id => {
+                  const oldMarker = markers[id];
+                  if (oldMarker) {
+                      oldMarker.setIcon(createYachtIcon(oldMarker.yacht, oldMarker.location, false));
+                  }
+              });
+              selectedMarkers.clear();
+
+              // Select the target marker
+              selectedMarkers.add(mmsi);
+              marker.setIcon(createYachtIcon(marker.yacht, marker.location, true));
+
+              console.log('Focused on ' + mmsi);
+            }
+          }
+
           window.addEventListener('error', console.error);
           window.ReactNativeWebView.postMessage('mapReady');
+
+          // *** NEW: Logic to focus on the yacht after the first location update ***
+          if (focusedMmsi) {
+            const originalUpdateFn = window.updateLocations;
+            window.updateLocations = function(data) {
+              originalUpdateFn(data); // Run the original update first
+              focusOnYacht(focusedMmsi); // Then attempt to focus
+              window.updateLocations = originalUpdateFn; // Then restore the original function so this only runs once
+            };
+          }
+
         </script>
       </body>
     </html>
   `;
-  // Above this is the HTML BOCK
+
   return (
     <View style={styles.container}>
-      <WebSocketHandler yachts={yachts} onLocationUpdate={handleLocationUpdate} />
+      <WebSocketHandler
+        yachts={yachts}
+        onLocationUpdate={handleLocationUpdate}
+      />
       <WebView
         ref={webViewRef}
-        source={{ html: getMapHTML() }}
+        // *** MODIFIED: Pass the focusedMmsi to the HTML generator ***
+        source={{ html: getMapHTML(focusedMmsi) }}
         style={[styles.map, isLoading && styles.hidden]}
         onMessage={handleWebViewMessage}
-        onError={(error) => console.warn(`${LOG_PREFIX} WebView error:`, error.nativeEvent)}
+        onError={(error) =>
+          console.warn(`${LOG_PREFIX} WebView error:`, error.nativeEvent)
+        }
       />
       {isLoading && (
         <View style={styles.loadingContainer}>

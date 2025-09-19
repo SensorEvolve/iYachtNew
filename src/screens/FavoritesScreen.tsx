@@ -2,49 +2,42 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useFavorites } from "../contexts/FavoritesContext";
 import YachtList from "../components/YachtList";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native"; // Removed CompositeNavigationProp
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Yacht } from "../Types/yacht";
-import { RootStackParamList } from "../Types/navigation";
+import { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
+import { Yacht } from "../types/yacht";
+import { RootTabParamList, HomeStackParamList } from "../types/navigation";
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+// FINAL FIX: Manually combine the two navigation types using '&'
+type FavoritesScreenNavigationProp = BottomTabNavigationProp<
+  RootTabParamList,
+  "FavoritesTab"
+> &
+  NativeStackNavigationProp<HomeStackParamList>;
 
 const FavoritesScreen: React.FC<{ yachts: Yacht[] }> = ({ yachts }) => {
-  const navigation = useNavigation<NavigationProp>();
+  const navigation = useNavigation<FavoritesScreenNavigationProp>();
   const { favorites } = useFavorites();
 
-  console.log('=== FavoritesScreen Debug ===');
-  console.log('Received yachts count:', yachts?.length);
-  console.log('Favorites from context:', favorites);
-
   const favoriteYachts = yachts.filter((yacht) => {
-    // Convert yacht.id to string for comparison
-    const yachtIdString = String(yacht.id);
-    const isIncluded = favorites.includes(yachtIdString);
-    console.log(`Checking yacht ${yacht.id} (${typeof yacht.id}) against favorites:`, isIncluded);
-    return isIncluded;
+    return favorites.includes(String(yacht.id));
   });
-
-  console.log('Filtered yachts count:', favoriteYachts.length);
-  console.log('Filtered yacht IDs:', favoriteYachts.map(y => y.id));
 
   const handleYachtPress = (yacht: Yacht) => {
     navigation.navigate("Detail", { yacht });
   };
 
   if (favoriteYachts.length === 0) {
-    console.log('Rendering empty state');
     return (
       <View style={styles.emptyContainer}>
-        <Text style={styles.emptyText}>No favorite yachts yet</Text>
+        <Text style={styles.emptyText}>No Favorites Yet</Text>
         <Text style={styles.emptySubText}>
-          Tap the heart icon on any yacht details to add it to your favorites
+          Tap the heart icon on any yacht to add it here.
         </Text>
       </View>
     );
   }
 
-  console.log('Rendering yacht list with favorites');
   return (
     <View style={styles.container}>
       <YachtList yachts={favoriteYachts} onYachtPress={handleYachtPress} />

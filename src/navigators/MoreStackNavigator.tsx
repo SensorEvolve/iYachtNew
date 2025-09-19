@@ -11,7 +11,7 @@ import AboutScreen from "../screens/AboutScreen";
 import CreditsScreen from "../screens/CreditsScreen";
 
 // Import types
-import { MoreStackParamList } from "../Types/NavigationParams";
+import { MoreStackParamList } from "../types/navigation";
 
 const Stack = createNativeStackNavigator<MoreStackParamList>();
 

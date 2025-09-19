@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { YachtLocation } from "../Types/yacht";
+import { YachtLocation } from "../types/yacht";
 
 interface LocationUpdate {
   lat: number;
@@ -17,6 +17,7 @@ class YachtLocationService {
   private locations: Map<string, YachtLocation> = new Map();
   private initialized: boolean = false;
   private initializationPromise: Promise<void>;
+  private saveTimeout: NodeJS.Timeout | null = null; // For debouncing
 
   constructor() {
     console.log(`${LOG_PREFIX} Service created`);
@@ -48,7 +49,6 @@ class YachtLocationService {
         const parsed = JSON.parse(storedLocations);
         if (Array.isArray(parsed)) {
           parsed.forEach((location) => {
-            // Ensure status is present for manual locations
             if (location.source === "MANUAL" && !location.status) {
               location.status = 5; // Set moored status
             }
@@ -93,11 +93,9 @@ class YachtLocationService {
       };
 
       if (!existingLocation) {
-        // No existing location, add the manual one
         this.locations.set(location.mmsi, csvLocation);
         console.log(`${LOG_PREFIX} Added manual position for ${location.mmsi}`);
       } else if (existingLocation.source === "MANUAL") {
-        // Only update manual positions if CSV data is newer
         const existingDate = new Date(existingLocation.timestamp);
         const newDate = new Date(location.timestamp);
 
@@ -118,7 +116,8 @@ class YachtLocationService {
       }
     }
 
-    await this.saveLocations();
+    // Use the debounced save instead of saving immediately
+    this.debouncedSaveLocations();
   }
 
   public async updateLocation(
@@ -133,7 +132,6 @@ class YachtLocationService {
     const currentLocation = this.locations.get(mmsi);
     const newTimestamp = update.timestamp || new Date().toISOString();
 
-    // If current position is MANUAL, only update if new data is newer
     if (currentLocation?.source === "MANUAL") {
       const currentDate = new Date(currentLocation.timestamp);
       const newDate = new Date(newTimestamp);
@@ -154,14 +152,13 @@ class YachtLocationService {
         console.log(
           `${LOG_PREFIX} Updated AIS position for previously manual ${mmsi}`
         );
-        await this.saveLocations();
+        this.debouncedSaveLocations(); // Use the debounced save
       } else {
         console.log(`${LOG_PREFIX} Keeping manual position for ${mmsi}`);
       }
       return;
     }
 
-    // Always update AIS positions with new data
     const newLocation: YachtLocation = {
       mmsi,
       lat: update.lat,
@@ -174,8 +171,8 @@ class YachtLocationService {
     };
 
     this.locations.set(mmsi, newLocation);
-    console.log(`${LOG_PREFIX} Updated AIS position for ${mmsi}`);
-    await this.saveLocations();
+    // Use the debounced save instead of saving immediately
+    this.debouncedSaveLocations();
   }
 
   private async saveLocations(): Promise<void> {
@@ -190,6 +187,17 @@ class YachtLocationService {
     } catch (error) {
       console.error(`${LOG_PREFIX} Error saving locations:`, error);
     }
+  }
+
+  // New method to debounce the save operation
+  private debouncedSaveLocations(): void {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+    }
+
+    this.saveTimeout = setTimeout(() => {
+      this.saveLocations();
+    }, 1500); // Wait 1.5 seconds after the last update before saving
   }
 
   private isValidCoordinate(lat: number, lon: number): boolean {

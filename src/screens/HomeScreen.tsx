@@ -1,7 +1,5 @@
-// src/screens/HomeScreen.tsx
 import React, { useCallback, useRef, useState } from "react";
 import {
-  // ActivityIndicator, // Keep if using loading indicator within the screen
   Animated,
   FlatList,
   Platform,
@@ -10,13 +8,13 @@ import {
   View,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-// Ensure this path is correct for your project structure
-import { RootStackParamList } from "../Types/navigation";
 import * as Haptics from "expo-haptics";
-// Ensure these paths are correct
-import YachtList from "../components/YachtList";
-import { Yacht } from "../Types/yacht";
-import { Ionicons } from "@expo/vector-icons"; // Keep for Search button
+import { Ionicons } from "@expo/vector-icons";
+
+// --- Import your project-specific types and components ---
+import type { HomeStackParamList } from "../types/navigation"; // Ensure path is correct
+import type { Yacht } from "../types/yacht"; // Ensure path is correct
+import YachtList from "../components/YachtList"; // Ensure path is correct
 import {
   IconProps,
   PriceIcon,
@@ -25,24 +23,20 @@ import {
   SpeedometerIcon,
 } from "../components/icons/CustomIcons"; // Ensure path is correct
 
-// Adjust ParamList key if 'HomeRoot' is used in the stack, otherwise 'Home'
-interface Props extends NativeStackScreenProps<RootStackParamList, "HomeRoot"> {
+// Props for the HomeScreen. It expects navigation props from React Navigation,
+// AND 'yachts' and 'isLoading' from a parent component.
+// Note: You used 'HomeRoot'. Ensure this matches the name in your Navigator.
+type Props = NativeStackScreenProps<HomeStackParamList, "HomeRoot"> & {
   yachts: Yacht[];
   isLoading: boolean;
-}
+};
 
-interface FilterButtonProps {
+// A smaller component for the filter buttons at the top.
+const FilterButton: React.FC<{
   isActive: boolean;
   onPress: () => void;
   icon: React.FC<IconProps>;
-}
-
-// FilterButton component remains the same
-const FilterButton: React.FC<FilterButtonProps> = ({
-  isActive,
-  onPress,
-  icon: Icon,
-}) => {
+}> = ({ isActive, onPress, icon: Icon }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
@@ -51,12 +45,8 @@ const FilterButton: React.FC<FilterButtonProps> = ({
       useNativeDriver: true,
     }).start();
   };
-
   const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-    }).start();
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start();
   };
 
   return (
@@ -64,7 +54,7 @@ const FilterButton: React.FC<FilterButtonProps> = ({
       onPress={onPress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
-      style={[styles.filterButton, isActive && styles.activeFilter]}
+      style={styles.filterButton}
       activeOpacity={0.7}
     >
       <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
@@ -75,7 +65,7 @@ const FilterButton: React.FC<FilterButtonProps> = ({
   );
 };
 
-// HomeScreen Component Updated
+// --- Main HomeScreen Component ---
 const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
   const [filters, setFilters] = useState({
     byLength: false,
@@ -91,113 +81,85 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
     listRef.current?.scrollToOffset({ offset: 0, animated: true });
   };
 
-  const handleFilterPress = async (filterFunction: () => void) => {
-    await Haptics.selectionAsync();
-    filterFunction();
-  };
-
-  const handleYachtPress = async (yacht: Yacht) => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Ensure 'Detail' matches the screen name in your RootStackParamList/HomeStackParamList
+  const handleYachtPress = (yacht: Yacht) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     navigation.navigate("Detail", { yacht });
   };
 
-  // --- handleFavoritesPress function REMOVED ---
-  // (As it's no longer called from the JSX)
-  // const handleFavoritesPress = async () => {
-  //  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  //  navigation.navigate("Favorites", { yachts });
-  // };
-
-  // --- handleMapPress function was already removed or not present ---
-
-  const handleSearchPress = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Ensure 'Search' matches the screen name in your RootStackParamList/HomeStackParamList
+  const handleSearchPress = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     navigation.navigate("Search", { yachts });
   };
 
-  const handleSearchPressIn = () => {
-    Animated.spring(searchButtonScale, {
-      toValue: 0.95,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handleSearchPressOut = () => {
-    Animated.spring(searchButtonScale, {
-      toValue: 1,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const parseNumericValue = useCallback((value: string): number => {
+  // Memoized function to parse numeric strings (e.g., "150m", "$200M")
+  const parseNumericValue = useCallback((value: string | number): number => {
+    if (typeof value === "number") return value;
+    if (typeof value !== "string") return 0;
     const numericString = value.replace(/[^\d.]/g, "");
     const parsedValue = parseFloat(numericString);
     return isNaN(parsedValue) ? 0 : parsedValue;
   }, []);
 
+  // Memoized function to apply filters and sorting to the yacht list
   const getFilteredYachts = useCallback(() => {
-    // Ensure 'yachts' is always an array, even during initial loading
     const currentYachts = Array.isArray(yachts) ? yachts : [];
     let filtered = [...currentYachts];
 
-    // Apply sorting filters
     if (filters.byLength) {
-      filtered.sort((a, b) =>
-        parseNumericValue(b.length) - parseNumericValue(a.length)
+      filtered.sort(
+        (a, b) => parseNumericValue(b.length) - parseNumericValue(a.length)
       );
     } else if (filters.bySpeed) {
-      filtered.sort((a, b) =>
-        parseNumericValue(b.topSpeed) - parseNumericValue(a.topSpeed)
+      filtered.sort(
+        (a, b) => parseNumericValue(b.topSpeed) - parseNumericValue(a.topSpeed)
       );
     } else if (filters.byPrice) {
-      filtered.sort((a, b) =>
-        parseNumericValue(b.price) - parseNumericValue(a.price)
+      filtered.sort(
+        (a, b) => parseNumericValue(b.price) - parseNumericValue(a.price)
       );
     }
-    // If no sort filter is active, list remains in original order or last sorted state
 
-    // Apply seized filter (can be combined with a sort)
     if (filters.bySeized) {
       filtered = filtered.filter(
-        (yacht) => yacht.seizedBy && yacht.seizedBy.trim() !== "",
+        (yacht) => yacht.seizedBy && yacht.seizedBy.trim() !== ""
       );
     }
 
     return filtered;
   }, [yachts, filters, parseNumericValue]);
 
+  // Toggles a filter on or off
   const toggleFilter = useCallback((filterName: keyof typeof filters) => {
-    handleFilterPress(() => {
-      setFilters((prev) => {
-        const isCurrentlyActive = prev[filterName];
-        // Logic to ensure only one SORT filter is active at a time,
-        // but the SEIZED filter can be toggled independently.
-        const newFilters = {
-          byLength: false,
-          bySpeed: false,
-          byPrice: false,
-          // Keep the current seized state unless toggling seized itself
-          bySeized: filterName === "bySeized" ? !prev.bySeized : prev.bySeized,
-        };
+    Haptics.selectionAsync();
+    setFilters((prev) => {
+      const isCurrentlyActive = prev[filterName];
+      // Reset all *sorting* filters
+      const newFilters = {
+        ...prev,
+        byLength: false,
+        bySpeed: false,
+        byPrice: false,
+      };
 
-        // If toggling a sort filter, activate it only if it wasn't already active
-        // If it was active, clicking again effectively deactivates it (all sorts become false)
-        if (filterName !== "bySeized" && !isCurrentlyActive) {
-          newFilters[filterName] = true;
-        }
-        // If toggling the seized filter, its state is already handled above
+      // If toggling a sort filter that wasn't active, activate it.
+      // If it *was* active, it's now turned off by the reset above.
+      if (filterName !== "bySeized" && !isCurrentlyActive) {
+        newFilters[filterName] = true;
+      }
 
-        return newFilters;
-      });
-      scrollToTop();
+      // Toggle the seized filter independently
+      if (filterName === "bySeized") {
+        newFilters.bySeized = !prev.bySeized;
+      }
+
+      return newFilters;
     });
-  }, [handleFilterPress, scrollToTop]); // Added dependencies based on usage
+    scrollToTop();
+  }, []);
 
   return (
     <View style={styles.container}>
-      {/* Filter Container - No map button here */}
+      {/* Filter Bar */}
       <View style={styles.filterContainer}>
         <FilterButton
           isActive={filters.byLength}
@@ -219,110 +181,71 @@ const HomeScreen: React.FC<Props> = ({ navigation, yachts, isLoading }) => {
           onPress={() => toggleFilter("bySeized")}
           icon={SeizedIcon}
         />
-        {/* No Favorites or Map button here */}
       </View>
 
+      {/* Yacht List */}
       <YachtList
         ref={listRef}
         yachts={getFilteredYachts()}
         onYachtPress={handleYachtPress}
-        isLoading={isLoading} // Pass loading state to YachtList
+        isLoading={isLoading}
       />
 
-      {/* Search Button remains the same */}
-      <Animated.View
-        style={[
-          styles.searchButtonContainer,
-          { transform: [{ scale: searchButtonScale }] },
-        ]}
+      {/* Floating Search Button */}
+      <TouchableOpacity
+        style={styles.searchButtonContainer}
+        onPress={handleSearchPress}
+        activeOpacity={0.8}
       >
-        <TouchableOpacity
-          style={styles.searchButton}
-          onPress={handleSearchPress}
-          onPressIn={handleSearchPressIn}
-          onPressOut={handleSearchPressOut}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="search" size={30} color="white" />
-        </TouchableOpacity>
-      </Animated.View>
+        <Ionicons name="search" size={30} color="white" />
+      </TouchableOpacity>
     </View>
   );
 };
 
-// Styles remain the same
+// --- Styles ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fff",
   },
-  loadingContainer: { // Keep if needed for conditional rendering within YachtList perhaps
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
   filterContainer: {
     flexDirection: "row",
-    justifyContent: "space-evenly", // This will space out the 4 items
-    alignItems: "center",
+    justifyContent: "space-evenly",
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#eee",
-    // marginTop: 2, // Consider removing if SafeAreaView handles top spacing
     backgroundColor: "#fff",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
   },
   filterButton: {
     padding: 12,
     alignItems: "center",
     position: "relative",
   },
-  activeFilter: {
-    // Style for active filter button state
-  },
   underline: {
     position: "absolute",
-    bottom: 0,
-    left: 5,
-    right: 5,
-    height: 2,
+    bottom: 5,
+    left: 10,
+    right: 10,
+    height: 3,
     backgroundColor: "#000",
-    borderRadius: 1,
+    borderRadius: 2,
   },
   searchButtonContainer: {
     position: "absolute",
-    right: 20,
-    bottom: 20, // Adjust if it overlaps with bottom tabs later
-    zIndex: 10, // Ensure it's above the list
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
-  },
-  searchButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    right: 25,
+    bottom: 25,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: "black",
     justifyContent: "center",
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
   },
 });
 
