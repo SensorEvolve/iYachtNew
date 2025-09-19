@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Yacht Tracker",
-    "slug": "Yacht Tracker",
+    "slug": "yacht-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -41,7 +41,9 @@
       ]
     ],
     "extra": {
-      "eas": {}
+      "eas": {
+        "projectId": "057fadc4-ff20-4d9a-bdff-9b5257efd918"
+      }
     }
   }
 }
