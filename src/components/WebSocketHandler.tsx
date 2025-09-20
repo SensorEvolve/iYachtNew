@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef } from "react";
 import { AppState, AppStateStatus } from "react-native";
+import React, { useCallback, useEffect, useRef } from "react";
 import { Yacht } from "../types/yacht";
 
 interface Position {
