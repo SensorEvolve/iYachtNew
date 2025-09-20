@@ -1,37 +1,22 @@
 import { Asset } from "expo-asset";
 import * as FileSystem from "expo-file-system/legacy";
 import { Yacht, CSV_COLUMNS, YachtLocation } from "../types/yacht";
-import { locationService } from "../services/YachtLocationService";
+// The direct dependency on locationService is now removed.
 
 const LOG_PREFIX = "📝 [DataParser]";
 
+// (No changes to validateAndFormatDate and parseLocation helper functions)
 const validateAndFormatDate = (dateString: string): string => {
   try {
-    if (!dateString) {
-      return new Date().toISOString();
-    }
-
-    // Handle various date formats
-    let date: Date;
-
-    // Clean up the date string
+    if (!dateString) return new Date().toISOString();
     const cleanDateString = dateString
-      .replace(".000Z", "Z") // Handle .000Z format
-      .replace(/\s+/g, "T") // Replace spaces with T
-      .replace(/(\d{4}-\d{2}-\d{2})(?:T?)(\d{2}:\d{2}:\d{2})/, "$1T$2"); // Ensure T separator
-
-    date = new Date(cleanDateString);
-
-    if (!isNaN(date.getTime())) {
-      return date.toISOString();
-    }
-
-    // Try parsing as UTC if direct parsing fails
+      .replace(".000Z", "Z")
+      .replace(/\s+/g, "T")
+      .replace(/(\d{4}-\d{2}-\d{2})(?:T?)(\d{2}:\d{2}:\d{2})/, "$1T$2");
+    let date = new Date(cleanDateString);
+    if (!isNaN(date.getTime())) return date.toISOString();
     const utcDate = new Date(dateString + "Z");
-    if (!isNaN(utcDate.getTime())) {
-      return utcDate.toISOString();
-    }
-
+    if (!isNaN(utcDate.getTime())) return utcDate.toISOString();
     console.warn(
       `${LOG_PREFIX} Invalid date format: ${dateString}, using current date`
     );
@@ -48,69 +33,37 @@ const validateAndFormatDate = (dateString: string): string => {
 const parseLocation = (
   locationString: string,
   entryDate: string
-): {
-  lat: number;
-  lon: number;
-  speed: number;
-  course: number;
-  status: number;
-  timestamp: string;
-} | null => {
+): Omit<YachtLocation, "mmsi"> | null => {
   if (!locationString) return null;
-
   try {
-    console.log(`${LOG_PREFIX} Parsing location: ${locationString}`);
     let [lat, lon, speed = 0, course = 0] = locationString
       .split(",")
-      .map((value) => {
-        const num = parseFloat(value.trim());
-        return isNaN(num) ? 0 : num;
-      });
-
-    // Validate coordinates with more lenient bounds for edge cases
-    if (
-      typeof lat === "number" &&
-      !isNaN(lat) &&
-      typeof lon === "number" &&
-      !isNaN(lon) &&
-      lat >= -90 &&
-      lat <= 90 &&
-      lon >= -180 &&
-      lon <= 180
-    ) {
-      const timestamp = validateAndFormatDate(
-        entryDate || new Date().toISOString()
-      );
-
-      // Ensure speed and course are within valid ranges
-      speed = Math.max(0, Math.min(speed, 100)); // Cap speed at 100 knots
-      course = ((course % 360) + 360) % 360; // Normalize course to 0-359
-
+      .map((v) => parseFloat(v.trim()) || 0);
+    if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
       return {
         lat,
         lon,
         speed,
         course,
-        status: 5, // Default to Moored for manual positions
-        timestamp,
+        status: 5,
+        timestamp: validateAndFormatDate(entryDate),
+        source: "MANUAL",
       };
-    } else {
-      console.warn(
-        `${LOG_PREFIX} Invalid coordinates: lat=${lat}, lon=${lon} from string: ${locationString}`
-      );
     }
+    console.warn(`${LOG_PREFIX} Invalid coordinates in CSV: ${locationString}`);
   } catch (error) {
     console.warn(
-      `${LOG_PREFIX} Error parsing location for: ${locationString}`,
+      `${LOG_PREFIX} Error parsing location: ${locationString}`,
       error
     );
   }
   return null;
 };
 
+// The main function is now simplified.
 export const loadYachtData = async (): Promise<Yacht[]> => {
   try {
-    console.log(`${LOG_PREFIX} Starting yacht data load`);
+    console.log(`${LOG_PREFIX} Starting yacht data load from CSV`);
     const csvModule = require("../assets/super_yachts.csv");
     const asset = Asset.fromModule(csvModule);
     await asset.downloadAsync();
@@ -119,50 +72,16 @@ export const loadYachtData = async (): Promise<Yacht[]> => {
     const lines = csvContent
       .split("\n")
       .map((line) => line.trim())
-      .filter((line) => line.length > 0 && !line.includes("Name"));
+      .filter(Boolean);
+    if (lines[0].includes("Name")) lines.shift(); // Remove header row
 
     console.log(`${LOG_PREFIX} Processing ${lines.length} yacht entries`);
-    const locationUpdates: YachtLocation[] = [];
-    const processedMMSIs = new Set<string>();
 
     const yachts = lines.map((line, index) => {
       const values = line.split(";").map((v) => v.trim());
       const mmsi = values[CSV_COLUMNS.MMSI];
-      const locationString = values[CSV_COLUMNS.LOCATION_LAT_LON];
-      const entryDate = values[CSV_COLUMNS.ENTRY_DATE];
 
-      // Process location if we have MMSI and haven't processed this yacht yet
-      if (mmsi && !processedMMSIs.has(mmsi) && locationString) {
-        processedMMSIs.add(mmsi);
-        console.log(
-          `${LOG_PREFIX} Processing MMSI ${mmsi} with location ${locationString}`
-        );
-
-        const locationData = parseLocation(locationString, entryDate);
-        if (locationData) {
-          console.log(
-            `${LOG_PREFIX} Valid location for MMSI: ${mmsi}
-            Lat/Lon: ${locationData.lat}, ${locationData.lon}
-            Speed/Course: ${locationData.speed}kts, ${locationData.course}°
-            Timestamp: ${locationData.timestamp}`
-          );
-
-          locationUpdates.push({
-            mmsi,
-            lat: locationData.lat,
-            lon: locationData.lon,
-            speed: locationData.speed,
-            course: locationData.course,
-            status: locationData.status,
-            timestamp: locationData.timestamp,
-            source: "MANUAL",
-          });
-        } else {
-          console.log(`${LOG_PREFIX} No valid location for MMSI: ${mmsi}`);
-        }
-      }
-
-      return {
+      const yacht: Yacht = {
         id: String(index),
         name: values[CSV_COLUMNS.NAME] || "",
         builtBy: values[CSV_COLUMNS.BUILT_BY] || "",
@@ -187,16 +106,21 @@ export const loadYachtData = async (): Promise<Yacht[]> => {
           values[CSV_COLUMNS.IMAGE_NAME] ||
           values[CSV_COLUMNS.NAME].toLowerCase().replace(/\s+/g, "_"),
         mmsi: mmsi || "",
-        isFavorite: false, // Default value for isFavorite
       };
-    });
 
-    if (locationUpdates.length > 0) {
-      console.log(
-        `${LOG_PREFIX} Initializing ${locationUpdates.length} manual locations`
-      );
-      await locationService.initializeFromCSV(locationUpdates);
-    }
+      // If a manual location exists in the CSV, parse it and attach it.
+      const locationString = values[CSV_COLUMNS.LOCATION_LAT_LON];
+      if (mmsi && locationString) {
+        const locationData = parseLocation(
+          locationString,
+          values[CSV_COLUMNS.ENTRY_DATE]
+        );
+        if (locationData) {
+          yacht.location = { ...locationData, mmsi }; // Attach the manual location here
+        }
+      }
+      return yacht;
+    });
 
     console.log(`${LOG_PREFIX} Successfully loaded ${yachts.length} yachts`);
     return yachts;

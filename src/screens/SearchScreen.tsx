@@ -1,248 +1,307 @@
-import React, { useState, useEffect, useRef } from "react";
-import {
-  View,
-  StyleSheet,
-  TextInput,
-  Text,
-  Platform,
-  TouchableOpacity,
-  SafeAreaView,
-  FlatList,
-  Image,
-  Keyboard,
-} from "react-native";
-import { BlurView } from "expo-blur";
-import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import type { HomeStackParamList } from "../types/navigation";
-import type { Yacht } from "../types/yacht";
-import { getMainImage } from "../utils/imageUtils";
+import { AppState, AppStateStatus } from "react-native";
+import React, { useCallback, useEffect, useRef } from "react";
+import { Yacht } from "../types/yacht";
 
-type Props = NativeStackScreenProps<HomeStackParamList, "Search">;
+interface Position {
+  lat: number;
+  lon: number;
+  speed: number;
+  course: number;
+  status?: number;
+  timestamp?: string;
+}
 
-const SearchScreen: React.FC<Props> = ({ navigation, route }) => {
-  const allYachts = route.params?.yachts || [];
+interface Props {
+  yachts: Yacht[];
+  onLocationUpdate: (mmsi: string, data: Position) => void;
+}
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filteredYachts, setFilteredYachts] = useState<Yacht[]>([]);
-  const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
+const LOG_PREFIX = "🔌 [WebSocket]";
+
+class ConnectionManager {
+  private ws: WebSocket | null = null;
+  private reconnectTimeout?: NodeJS.Timeout;
+  private currentRetry = 0;
+  private readonly baseDelay = 5000;
+  private readonly maxDelay = 30000;
+  private readonly subscriptionDelay = 500;
+  private subscriptionTimeout?: NodeJS.Timeout;
+  private lastMessageTime?: number;
+  private heartbeatInterval?: NodeJS.Timeout;
+  private isSubscribed = false;
+  private isConnecting = false;
+
+  constructor(
+    // --- FIX 1: Use a generic 'any' type for the event to ensure compatibility ---
+    private readonly onMessage: (event: any) => void,
+    private readonly onConnect: () => void
+  ) {
+    this.setupHeartbeat();
+  }
+
+  private setupHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+    }
+    this.heartbeatInterval = setInterval(() => {
+      if (!this.lastMessageTime) return;
+      const now = Date.now();
+      const elapsed = now - this.lastMessageTime;
+      if (elapsed > 30000 && this.ws && !this.isConnecting) {
+        console.log(`${LOG_PREFIX} Connection stale, reconnecting...`);
+        this.reconnect();
+      }
+    }, 10000);
+  }
+
+  public connect() {
+    if (this.isConnecting) {
+      console.log(`${LOG_PREFIX} Connection attempt already in progress`);
+      return;
+    }
+    this.cleanup();
+    this.isConnecting = true;
+    try {
+      console.log(
+        `${LOG_PREFIX} Creating connection (Attempt ${this.currentRetry + 1})`
+      );
+      this.ws = new WebSocket("wss://stream.aisstream.io/v0/stream");
+
+      this.ws.onopen = () => {
+        console.log(`${LOG_PREFIX} Connected successfully`);
+        this.currentRetry = 0;
+        this.lastMessageTime = Date.now();
+        this.isConnecting = false;
+        this.isSubscribed = false;
+
+        if (this.subscriptionTimeout) {
+          clearTimeout(this.subscriptionTimeout);
+        }
+        this.subscriptionTimeout = setTimeout(() => {
+          if (!this.isSubscribed) {
+            this.onConnect();
+            this.isSubscribed = true;
+          }
+        }, this.subscriptionDelay);
+      };
+
+      this.ws.onmessage = (event) => {
+        this.lastMessageTime = Date.now();
+        this.onMessage(event);
+      };
+
+      this.ws.onerror = (error: any) => {
+        console.error(
+          `${LOG_PREFIX} Error:`,
+          error.message || "A WebSocket error occurred"
+        );
+        this.isConnecting = false;
+      };
+
+      // --- FIX 2: Use a generic 'any' type for the close event ---
+      this.ws.onclose = (event: any) => {
+        console.log(`${LOG_PREFIX} Connection closed: ${event.code}`);
+        this.isConnecting = false;
+        this.isSubscribed = false;
+        if (event.code !== 1000 && !this.reconnectTimeout) {
+          this.scheduleReconnect();
+        }
+      };
+    } catch (error) {
+      console.error(`${LOG_PREFIX} Connection error:`, error);
+      this.isConnecting = false;
+      this.scheduleReconnect();
+    }
+  }
+
+  private scheduleReconnect() {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+    }
+    const delay = Math.min(
+      this.baseDelay * Math.pow(1.5, this.currentRetry),
+      this.maxDelay
+    );
+    console.log(`${LOG_PREFIX} Reconnecting in ${delay}ms...`);
+    this.reconnectTimeout = setTimeout(() => {
+      this.currentRetry++;
+      this.connect();
+    }, delay);
+  }
+
+  public reconnect() {
+    if (!this.isConnecting) {
+      this.cleanup();
+      this.connect();
+    }
+  }
+
+  public send(data: unknown): boolean {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(JSON.stringify(data));
+        return true;
+      } catch (error) {
+        console.error(`${LOG_PREFIX} Send error:`, error);
+        return false;
+      }
+    }
+    return false;
+  }
+
+  public cleanup() {
+    this.isConnecting = false;
+    this.isSubscribed = false;
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+    }
+    if (this.subscriptionTimeout) {
+      clearTimeout(this.subscriptionTimeout);
+    }
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+    }
+    if (this.ws) {
+      this.ws.close(1000); // Normal closure
+      this.ws = null;
+    }
+  }
+}
+
+const WebSocketHandler: React.FC<Props> = ({ yachts, onLocationUpdate }) => {
+  const connectionManager = useRef<ConnectionManager | null>(null);
+  const appState = useRef(AppState.currentState);
+  const batchedUpdates = useRef<Map<string, Position>>(new Map());
+  const batchTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  const processBatchedUpdates = useCallback(() => {
+    if (batchedUpdates.current.size > 0) {
+      batchedUpdates.current.forEach((position, mmsi) => {
+        onLocationUpdate(mmsi, position);
+      });
+      batchedUpdates.current.clear();
+    }
+  }, [onLocationUpdate]);
+
+  const isValidPosition = (position: Position): boolean => {
+    return (
+      typeof position.lat === "number" &&
+      typeof position.lon === "number" &&
+      !isNaN(position.lat) &&
+      !isNaN(position.lon) &&
+      position.lat >= -90 &&
+      position.lat <= 90 &&
+      position.lon >= -180 &&
+      position.lon <= 180
+    );
+  };
+
+  const handleMessage = useCallback(
+    (event: any) => {
+      // Using 'any' to match the constructor
+      try {
+        if (typeof event.data === "string" && event.data.startsWith("{")) {
+          const data = JSON.parse(event.data);
+
+          if (data?.Message) {
+            const positionData =
+              data.Message.PositionReport ||
+              data.Message.StandardClassBPositionReport;
+
+            if (positionData && data.MetaData?.MMSI) {
+              const timestamp = data.MetaData.time_utc?.split(".")[0] + "Z";
+              const position: Position = {
+                lat: positionData.Latitude,
+                lon: positionData.Longitude,
+                speed: positionData.Sog || 0,
+                course: positionData.Cog || 0,
+                status: positionData.NavigationalStatus,
+                timestamp: timestamp,
+              };
+
+              if (isValidPosition(position)) {
+                batchedUpdates.current.set(
+                  String(data.MetaData.MMSI),
+                  position
+                );
+                if (batchTimeout.current) {
+                  clearTimeout(batchTimeout.current);
+                }
+                batchTimeout.current = setTimeout(processBatchedUpdates, 100);
+              }
+            }
+          }
+        } else {
+          console.log(`${LOG_PREFIX} Received non-JSON message:`, event.data);
+        }
+      } catch (error) {
+        console.error(
+          `${LOG_PREFIX} Message processing error:`,
+          error,
+          "Raw data:",
+          event.data
+        );
+      }
+    },
+    [processBatchedUpdates]
+  );
+
+  const sendSubscription = useCallback(() => {
+    if (!connectionManager.current) return;
+    const mmsiList = yachts
+      .map((yacht) => yacht.mmsi)
+      .filter((mmsi) => mmsi && /^\d+$/.test(mmsi));
+
+    console.log(`${LOG_PREFIX} Subscribing to ${mmsiList.length} vessels`);
+    const message = {
+      APIKey: process.env.EXPO_PUBLIC_AISSTREAM_API_KEY,
+      BoundingBoxes: [
+        [
+          [-90, -180],
+          [90, 180],
+        ],
+      ],
+      FiltersShipMMSI: mmsiList,
+      FilterMessageTypes: ["PositionReport", "StandardClassBPositionReport"],
+    };
+
+    if (connectionManager.current.send(message)) {
+      console.log(`${LOG_PREFIX} Subscription sent successfully`);
+    }
+  }, [yachts]);
+
+  const handleAppStateChange = useCallback((nextAppState: AppStateStatus) => {
+    if (
+      appState.current.match(/inactive|background/) &&
+      nextAppState === "active" &&
+      connectionManager.current
+    ) {
+      console.log(`${LOG_PREFIX} App foregrounded, reconnecting...`);
+      connectionManager.current.reconnect();
+    }
+    appState.current = nextAppState;
+  }, []);
 
   useEffect(() => {
-    if (debounceTimeout.current) {
-      clearTimeout(debounceTimeout.current);
-    }
-
-    debounceTimeout.current = setTimeout(() => {
-      if (searchQuery.trim() === "") {
-        setFilteredYachts([]);
-        return;
-      }
-
-      const filtered = allYachts.filter((yacht) => {
-        const searchFields = [
-          yacht.name,
-          yacht.builtBy,
-          yacht.owner,
-          yacht.seizedBy,
-          yacht.shortInfo,
-          yacht.exteriorDesigner,
-          yacht.interiorDesigner,
-        ].map((field) => (field || "").toLowerCase());
-
-        const queryLower = searchQuery.toLowerCase();
-        return searchFields.some((field) => field.includes(queryLower));
-      });
-
-      setFilteredYachts(filtered);
-    }, 300);
-
+    connectionManager.current = new ConnectionManager(
+      handleMessage,
+      sendSubscription
+    );
+    connectionManager.current.connect();
+    const appStateSubscription = AppState.addEventListener(
+      "change",
+      handleAppStateChange
+    );
     return () => {
-      if (debounceTimeout.current) {
-        clearTimeout(debounceTimeout.current);
+      connectionManager.current?.cleanup();
+      appStateSubscription.remove();
+      if (batchTimeout.current) {
+        clearTimeout(batchTimeout.current);
       }
     };
-  }, [searchQuery, allYachts]);
+  }, [handleMessage, handleAppStateChange, sendSubscription]);
 
-  const handleYachtPress = (yacht: Yacht) => {
-    // This is the updated line:
-    // It replaces the current modal screen with the Detail screen,
-    // providing a cleaner navigation flow.
-    navigation.replace("Detail", { yacht });
-  };
-
-  const handleDismiss = () => {
-    navigation.goBack();
-  };
-
-  const renderYachtItem = ({ item }: { item: Yacht }) => (
-    <TouchableOpacity
-      style={styles.resultItem}
-      onPress={() => handleYachtPress(item)}
-      activeOpacity={0.7}
-    >
-      <Image
-        source={getMainImage(item.imageName)}
-        style={styles.yachtImage}
-        resizeMode="cover"
-      />
-      <View style={styles.yachtInfo}>
-        <Text style={styles.yachtName} numberOfLines={1}>
-          {item.name}
-        </Text>
-        <Text style={styles.yachtDetails}>
-          {item.length}m • Built {item.delivered}
-        </Text>
-        <Text style={styles.yachtBuilder} numberOfLines={1}>
-          {item.builtBy}
-          {item.seizedBy && <Text style={styles.seizedText}> • Seized</Text>}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
-
-  return (
-    <View style={styles.container}>
-      <BlurView intensity={25} tint="light" style={StyleSheet.absoluteFill}>
-        <SafeAreaView style={styles.contentContainer}>
-          <View style={styles.searchHeader}>
-            <TouchableOpacity
-              style={styles.dismissButton}
-              onPress={handleDismiss}
-            >
-              <Text style={styles.dismissButtonText}>✕</Text>
-            </TouchableOpacity>
-
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search yachts, owners, designers..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              returnKeyType="search"
-              clearButtonMode="while-editing"
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoFocus={true}
-            />
-          </View>
-
-          {searchQuery.trim() !== "" && (
-            <View style={styles.resultsContainer}>
-              {filteredYachts.length > 0 ? (
-                <FlatList
-                  data={filteredYachts}
-                  renderItem={renderYachtItem}
-                  keyExtractor={(item) => item.id.toString()}
-                  contentContainerStyle={styles.resultsList}
-                  showsVerticalScrollIndicator={false}
-                  onScrollBeginDrag={() => Keyboard.dismiss()}
-                />
-              ) : (
-                <Text style={styles.noResults}>No yachts found</Text>
-              )}
-            </View>
-          )}
-        </SafeAreaView>
-      </BlurView>
-    </View>
-  );
+  return null;
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "transparent",
-  },
-  contentContainer: {
-    flex: 1,
-    paddingTop: Platform.OS === "android" ? 25 : 0,
-  },
-  searchHeader: {
-    padding: 15,
-    flexDirection: "row",
-    alignItems: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.1)",
-    backgroundColor: "rgba(255,255,255,0.7)",
-  },
-  dismissButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "rgba(0,0,0,0.1)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
-  dismissButtonText: {
-    color: "#666",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  searchInput: {
-    flex: 1,
-    height: 40,
-    backgroundColor: "rgba(0,0,0,0.05)",
-    borderRadius: 10,
-    paddingHorizontal: 15,
-    fontSize: 16,
-  },
-  resultsContainer: {
-    flex: 1,
-  },
-  resultsList: {
-    padding: 15,
-  },
-  resultItem: {
-    flexDirection: "row",
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    marginBottom: 10,
-    overflow: "hidden",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  yachtImage: {
-    width: 100,
-    height: 100,
-  },
-  yachtInfo: {
-    flex: 1,
-    padding: 12,
-    justifyContent: "center",
-  },
-  yachtName: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 4,
-    color: "#1a1a1a",
-  },
-  yachtDetails: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 4,
-  },
-  yachtBuilder: {
-    fontSize: 14,
-    color: "#666",
-  },
-  seizedText: {
-    color: "#FF3B30",
-    fontWeight: "500",
-  },
-  noResults: {
-    textAlign: "center",
-    color: "#666",
-    marginTop: 20,
-    fontSize: 16,
-  },
-});
-
-export default SearchScreen;
+export default WebSocketHandler;

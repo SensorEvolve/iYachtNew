@@ -11,9 +11,9 @@ import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons"; // Make sure you have @expo/vector-icons installed
 
-// --- IMPORTANT: Adjust this import path if needed ---
-// It should point to the file where MoreStackParamList is defined (likely MoreStackNavigator.tsx)
-import { MoreStackParamList } from "../navigators/MoreStackNavigator";
+// --- Import the stack's param list type ---
+// This should point to your main navigation types file
+import { MoreStackParamList } from "../types/navigation";
 
 // Define the specific type for navigation prop used within the More stack,
 // specifically for the 'MoreList' screen (this screen).
@@ -21,6 +21,14 @@ type MoreScreenNavigationProp = NativeStackNavigationProp<
   MoreStackParamList,
   "MoreList"
 >;
+
+// Define a type for the menu items for better type safety
+type MenuItem = {
+  name: string;
+  // The screen should be a key of the ParamList, excluding the current screen
+  screen: keyof Omit<MoreStackParamList, "MoreList">;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+};
 
 const MoreScreen: React.FC = () => {
   // Get the navigation object specific to the More stack
@@ -31,16 +39,16 @@ const MoreScreen: React.FC = () => {
   // name: Text displayed on the button
   // screen: The route name defined in MoreStackParamList (in MoreStackNavigator.tsx) to navigate to
   // icon: The name of the Ionicons icon to display
-  const menuItems = [
+  const menuItems: readonly MenuItem[] = [
     {
       name: "About App",
       screen: "About", // Navigates to the 'About' route in MoreStackNavigator
-      icon: "information-circle-outline" as const, // Explicitly type icon name
+      icon: "information-circle-outline",
     },
     {
       name: "Image Credits",
       screen: "Credits", // Navigates to the 'Credits' route in MoreStackNavigator
-      icon: "document-text-outline" as const,
+      icon: "document-text-outline",
     },
     // --- Add more items here later if needed ---
     // {
@@ -58,10 +66,7 @@ const MoreScreen: React.FC = () => {
           key={index}
           style={styles.menuItem}
           // Navigate to the screen defined in the item object
-          // We use 'as keyof MoreStackParamList' for stricter TypeScript checking
-          onPress={() =>
-            navigation.navigate(item.screen as keyof MoreStackParamList)
-          }
+          onPress={() => navigation.navigate(item.screen)}
           activeOpacity={0.7} // Provide visual feedback on touch
         >
           {/* Icon */}

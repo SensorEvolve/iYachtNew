@@ -10,69 +10,52 @@ import {
   Text,
   TouchableOpacity,
   View,
-  // Removed Button import as we use TouchableOpacity
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-// *** UPDATED TYPE IMPORT ***
-// Make sure the path and filename ('NavigationParams.ts') are correct
-// Use the correct ParamList for the Stack this screen belongs to
-import type { HomeStackParamList } from "../types/navigation";
-// *** END UPDATE ***
-import { getDetailImages, getMainImage } from "../utils/imageUtils"; // Adjust path if needed
-import { FavoritesButton } from "../components/FavoritesButton"; // Adjust path if needed
-// Import Alert if you want to use it in handleShowOnMap for missing MMSI
-// import { Alert } from 'react-native';
+// --- 1. IMPORT THE HOOK and PARENT NAVIGATOR TYPE ---
+import { useNavigation } from "@react-navigation/native";
+import { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
+import type { HomeStackParamList, RootTabParamList } from "../types/navigation";
+import { getDetailImages, getMainImage } from "../utils/imageUtils";
+import { FavoritesButton } from "../components/FavoritesButton";
 
-// *** UPDATED TYPE USAGE ***
+// --- 2. CREATE A COMBINED NAVIGATION TYPE ---
+// This tells TypeScript that our navigation prop can navigate within
+// both the HomeStack (for details, search) AND the RootTabs (to get to the map).
+type DetailScreenNavigationProp = BottomTabNavigationProp<RootTabParamList> &
+  NativeStackScreenProps<HomeStackParamList, "Detail">["navigation"];
+
+// The main props for the screen (to get route.params) remain the same
 type Props = NativeStackScreenProps<HomeStackParamList, "Detail">;
-// *** END UPDATE ***
 
-const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
-  // --- Get yacht data from route ---
+const DetailScreen: React.FC<Props> = ({ route }) => {
   const { yacht } = route.params;
 
-  // --- Early return if yacht data is missing ---
+  // --- 3. USE THE HOOK WITH OUR NEW TYPE ---
+  const navigation = useNavigation<DetailScreenNavigationProp>();
+
+  // --- From here, the rest of the file is the same ---
+
   if (!yacht) {
-    // Or render a more informative loading/error state
     return (
       <View style={styles.container}>
         <Text>Yacht data not available.</Text>
       </View>
     );
   }
-  // --- End Check ---
 
-  // --- Component State and Refs ---
   const windowWidth = Dimensions.get("window").width;
   const [activeIndex, setActiveIndex] = useState(0);
   const flatListRef = useRef<FlatList<number>>(null);
 
-  // --- Image Handling ---
   const mainImage = getMainImage(yacht.imageName);
   const detailImages = getDetailImages(yacht.imageName);
-  const images = detailImages.length > 0 ? detailImages : [mainImage]; // Use detail images if available, else main
-
-  // --- Image Carousel Functions ---
-  const renderImage = ({ item }: { item: number }) => {
-    // Note: The 'item' unused warning might be incorrect from your linter tooling
-    // as 'item' is used below in source={item}. If it persists, you can ignore it
-    // or try renaming: renderImage = ({ item: imageSource }: { item: number }) => ... source={imageSource}
-    return (
-      <View style={[styles.imageSlide, { width: windowWidth }]}>
-        <Image
-          source={item} // item is the image source from the images array
-          style={[styles.heroImage, { width: windowWidth }]}
-          resizeMode="contain"
-        />
-      </View>
-    );
-  };
+  const images = detailImages.length > 0 ? detailImages : [mainImage];
 
   const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const slideSize = event.nativeEvent.layoutMeasurement.width;
     const index = event.nativeEvent.contentOffset.x / slideSize;
-    const roundIndex = Math.round(index);
-    setActiveIndex(roundIndex);
+    setActiveIndex(Math.round(index));
   };
 
   const goToImage = (index: number) => {
@@ -82,32 +65,32 @@ const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
     });
   };
 
-  // --- Map Navigation Handler ---
   const handleShowOnMap = () => {
     if (yacht?.mmsi) {
-      // Navigate to the 'MapTab' (the name of the tab screen in AppTabs.tsx)
       navigation.navigate("MapTab", { focusedMmsi: yacht.mmsi });
     } else {
       console.warn("[DetailScreen] Cannot show on map: Yacht MMSI is missing.");
-      // Optionally show an alert to the user
-      // Alert.alert("Missing Information", "Cannot show on map as the yacht's MMSI is missing.");
     }
   };
 
-  // --- Check for MMSI for Button State ---
   const hasMmsi = !!yacht?.mmsi;
 
-  // --- Render Component ---
-  // REMEMBER TO CHECK ALL JSX BELOW FOR STRAY TEXT OUTSIDE <Text> TAGS
   return (
     <ScrollView style={styles.container}>
-      {/* Image Carousel Section */}
+      {/* ... The rest of your JSX remains unchanged ... */}
       <View style={styles.carouselContainer}>
-        {/* Image FlatList */}
         <FlatList
           ref={flatListRef}
           data={images}
-          renderItem={renderImage}
+          renderItem={({ item }) => (
+            <View style={[styles.imageSlide, { width: windowWidth }]}>
+              <Image
+                source={item}
+                style={[styles.heroImage, { width: windowWidth }]}
+                resizeMode="contain"
+              />
+            </View>
+          )}
           keyExtractor={(item, index) => `image_${index}`}
           horizontal
           pagingEnabled
@@ -115,12 +98,9 @@ const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
           onScroll={onScroll}
           scrollEventThrottle={16}
         />
-
-        {/* Pagination Dots (only if multiple images) */}
         {images.length > 1 && (
           <View style={styles.pagination}>
-            {/* Map function with explicit types to address 'implicit any' warning */}
-            {images.map((_: number, index: number) => (
+            {images.map((_, index: number) => (
               <TouchableOpacity
                 key={`dot_${index}`}
                 onPress={() => goToImage(index)}
@@ -132,8 +112,6 @@ const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
             ))}
           </View>
         )}
-
-        {/* Live Track Overlay Button */}
         <TouchableOpacity
           style={[
             styles.liveTrackButton,
@@ -147,7 +125,6 @@ const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
         </TouchableOpacity>
       </View>
 
-      {/* Header Section Below Image */}
       <View style={styles.headerSection}>
         <View style={styles.titleRow}>
           <Text style={styles.yachtName} numberOfLines={1} ellipsizeMode="tail">
@@ -253,8 +230,7 @@ const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
           >
             {yacht.owner}
           </Text>
-        </View>{" "}
-        {/* Syntax typo previously fixed here */}
+        </View>
         {yacht.price && (
           <View style={styles.detailRow}>
             <Text style={styles.label}>Price</Text>
@@ -271,12 +247,9 @@ const DetailScreen: React.FC<Props> = ({ route, navigation }) => {
   );
 };
 
-// --- Styles ---
+// --- Styles (no changes) ---
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#FFFFFF", // White background for the scroll view
-  },
+  container: { flex: 1, backgroundColor: "#FFFFFF" },
   carouselContainer: {
     position: "relative",
     backgroundColor: "#f0f0f0",
@@ -287,9 +260,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  heroImage: {
-    height: "100%",
-  },
+  heroImage: { height: "100%" },
   pagination: {
     flexDirection: "row",
     position: "absolute",
@@ -325,14 +296,8 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 3,
   },
-  liveTrackButtonDisabled: {
-    backgroundColor: "rgba(100, 100, 100, 0.5)",
-  },
-  liveTrackButtonText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "bold",
-  },
+  liveTrackButtonDisabled: { backgroundColor: "rgba(100, 100, 100, 0.5)" },
+  liveTrackButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "bold" },
   headerSection: {
     padding: 16,
     backgroundColor: "#FFFFFF",
@@ -358,10 +323,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 4,
   },
-  headerText: {
-    fontSize: 15,
-    color: "#555",
-  },
+  headerText: { fontSize: 15, color: "#555" },
   section: {
     marginHorizontal: 16,
     marginTop: 20,
@@ -390,15 +352,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 10,
   },
-  ownerRow: {
-    alignItems: "flex-start",
-  },
-  label: {
-    fontSize: 15,
-    color: "#666",
-    flex: 0.4,
-    marginRight: 8,
-  },
+  ownerRow: { alignItems: "flex-start" },
+  label: { fontSize: 15, color: "#666", flex: 0.4, marginRight: 8 },
   value: {
     fontSize: 15,
     color: "#111",
@@ -406,14 +361,8 @@ const styles = StyleSheet.create({
     flex: 0.6,
     textAlign: "right",
   },
-  ownerValue: {
-    textAlign: "right",
-  },
-  description: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: "#444",
-  },
+  ownerValue: { textAlign: "right" },
+  description: { fontSize: 15, lineHeight: 22, color: "#444" },
   seizedContainer: {
     marginTop: 16,
     padding: 12,
@@ -422,11 +371,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: "#E53E3E",
   },
-  seizedText: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: "#C53030",
-  },
+  seizedText: { fontSize: 15, fontWeight: "500", color: "#C53030" },
 });
 
 export default DetailScreen;

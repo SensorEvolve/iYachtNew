@@ -22,8 +22,11 @@ export interface Yacht {
   imageName: string;
   isFavorite?: boolean;
   mmsi: string;
+  // This is the new property. It will hold the merged location data.
+  location?: YachtLocation;
 }
 
+// No changes below this line
 export interface YachtLocation {
   mmsi: string;
   lat: number;
