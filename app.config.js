@@ -1,0 +1,50 @@
+export default {
+  expo: {
+    name: "Yacht Tracker",
+    slug: "iYachtNew",
+    version: "1.0.0",
+    orientation: "portrait",
+    icon: "./assets/icon.png",
+    userInterfaceStyle: "light",
+    splash: {
+      image: "./assets/splash.png",
+      resizeMode: "contain",
+      backgroundColor: "#ffffff",
+    },
+    ios: {
+      supportsTablet: true,
+      bundleIdentifier: "com.10th.superyachts",
+      infoPlist: {
+        ITSAppUsesNonExemptEncryption: false,
+      },
+    },
+    android: {
+      adaptiveIcon: {
+        foregroundImage: "./assets/adaptive-icon.png",
+        backgroundColor: "#ffffff",
+      },
+    },
+    web: {
+      favicon: "./assets/favicon.png",
+    },
+    plugins: [
+      [
+        "expo-build-properties",
+        {
+          ios: {
+            newArchEnabled: true,
+          },
+          android: {
+            newArchEnabled: true,
+          },
+        },
+      ],
+    ],
+    extra: {
+      eas: {
+        projectId: "286ebeac-37cb-4e6d-80e2-7a9686d0bb05",
+      },
+      aisStreamApiKey: process.env.EXPO_PUBLIC_AISSTREAM_API_KEY,
+    },
+  },
+};

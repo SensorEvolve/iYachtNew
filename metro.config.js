@@ -1,25 +1,28 @@
-// metro.config.js
 const { getDefaultConfig } = require("expo/metro-config");
 const { mergeConfig } = require("metro-config");
 
-// Get the default Metro configuration
 const defaultConfig = getDefaultConfig(__dirname);
-
-// Destructure for easier access
 const { assetExts, sourceExts } = defaultConfig.resolver;
 
-// Configure react-native-svg-transformer
-const svgTransformerConfig = {
+const config = {
   transformer: {
     babelTransformerPath: require.resolve("react-native-svg-transformer"),
   },
   resolver: {
-    // Keep existing assetExts, filter out 'svg', add 'csv'
     assetExts: assetExts.filter((ext) => ext !== "svg").concat(["csv"]),
-    // Keep existing sourceExts, add 'svg'
     sourceExts: [...sourceExts, "svg"],
+  },
+  server: {
+    // Ensure WebSocket connections work properly in Metro
+    enhanceMiddleware: (middleware) => {
+      return (req, res, next) => {
+        if (req.url?.startsWith("/websocket")) {
+          res.setHeader("Access-Control-Allow-Origin", "*");
+        }
+        return middleware(req, res, next);
+      };
+    },
   },
 };
 
-// Merge the default config with the SVG transformer config
-module.exports = mergeConfig(defaultConfig, svgTransformerConfig);
+module.exports = mergeConfig(defaultConfig, config);

@@ -20,9 +20,14 @@ const Tab = createBottomTabNavigator<RootTabParamList>();
 interface AppTabsProps {
   yachts: Yacht[];
   isLoading: boolean;
+  onLocationUpdate: (mmsi: string, location: any) => void;
 }
 
-const AppTabs: React.FC<AppTabsProps> = ({ yachts, isLoading }) => {
+const AppTabs: React.FC<AppTabsProps> = ({
+  yachts,
+  isLoading,
+  onLocationUpdate,
+}) => {
   return (
     <Tab.Navigator
       screenOptions={({ route }: BottomTabScreenProps<RootTabParamList>) => ({
@@ -66,25 +71,15 @@ const AppTabs: React.FC<AppTabsProps> = ({ yachts, isLoading }) => {
         )}
       </Tab.Screen>
 
-      {/* --- THIS IS THE FIX --- */}
       <Tab.Screen name="MapTab" options={{ title: "Live Track" }}>
-        {/*
-          1. We receive the standard navigation props, which now include `route`.
-          2. We check if `route.params` exists and has a `focusedMmsi`.
-          3. We pass these params down to the `MapScreen` component.
-        */}
         {(props: BottomTabScreenProps<RootTabParamList, "MapTab">) => (
           <MapScreen
             {...props}
-            route={{
-              ...props.route,
-              params: { focusedMmsi: props.route.params?.focusedMmsi },
-            }}
             yachts={yachts}
+            onLocationUpdate={onLocationUpdate}
           />
         )}
       </Tab.Screen>
-      {/* --- END OF FIX --- */}
 
       <Tab.Screen
         name="MoreTab"
