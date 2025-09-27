@@ -48,48 +48,143 @@ const MAP_CONFIG = {
 
 const MapScreen: React.FC<Props> = ({ route, yachts, onLocationUpdate }) => {
   const [isMapReady, setIsMapReady] = useState(false);
+  const [hasInitialized, setHasInitialized] = useState(false);
+  const [updateCounter, setUpdateCounter] = useState(0);
   const webViewRef = useRef<WebView>(null);
   const focusedMmsi = route.params?.focusedMmsi;
 
-  // Convert yacht locations to map format
+  // Debug: Log yacht data changes
+  useEffect(() => {
+    console.log(`${LOG_PREFIX} 🔍 Total yachts received: ${yachts.length}`);
+
+    // Check specific yachts for debugging
+    const debugYachts = ['KORU', 'INFINITY', 'RADIANT'];
+    debugYachts.forEach(name => {
+      const yacht = yachts.find(y => y.name?.toUpperCase().includes(name.toUpperCase()));
+      if (yacht) {
+        console.log(`${LOG_PREFIX} 🔍 ${name} data:`, {
+          mmsi: yacht.mmsi,
+          name: yacht.name,
+          hasLocation: !!yacht.location,
+          location: yacht.location ? {
+            lat: yacht.location.lat,
+            lon: yacht.location.lon,
+            timestamp: yacht.location.timestamp,
+            source: yacht.location.source
+          } : null,
+          lastUpdate: yacht.lastUpdate
+        });
+      } else {
+        console.log(`${LOG_PREFIX} 🔍 ${name} not found in yacht data`);
+      }
+    });
+  }, [yachts]);
+
+  // Enhanced location update handler with debugging
+  const enhancedLocationUpdate = (mmsi: string, locationData: any) => {
+    console.log(`${LOG_PREFIX} 📍 Incoming location update for MMSI ${mmsi}:`, locationData);
+
+    // Find the yacht name for debugging
+    const yacht = yachts.find(y => y.mmsi === mmsi);
+    const yachtName = yacht?.name || 'Unknown';
+
+    console.log(`${LOG_PREFIX} 📍 Update for ${yachtName} (${mmsi}):`, {
+      lat: locationData.lat,
+      lon: locationData.lon,
+      speed: locationData.speed,
+      timestamp: locationData.timestamp
+    });
+
+    // Call the original handler
+    onLocationUpdate(mmsi, locationData);
+
+    // Trigger a re-render counter for debugging
+    setUpdateCounter(prev => prev + 1);
+  };
+
+  // Convert yacht locations to map format with detailed logging
   const locations = useMemo<LocationsMap>(() => {
     const locationMap: LocationsMap = {};
+    let manualCount = 0;
+    let aisCount = 0;
+    let recentCount = 0;
 
     yachts.forEach((yacht) => {
       if (yacht.location && yacht.mmsi) {
-        locationMap[yacht.mmsi] = {
+        const location = {
           lat: yacht.location.lat,
           lon: yacht.location.lon,
-          speed: yacht.location.speed,
-          course: yacht.location.course,
+          speed: yacht.location.speed || 0,
+          course: yacht.location.course || 0,
           status: yacht.location.status,
           timestamp: yacht.location.timestamp,
           source: yacht.location.source,
         };
+
+        locationMap[yacht.mmsi] = location;
+
+        // Count sources
+        if (location.source === "MANUAL") {
+          manualCount++;
+        } else {
+          aisCount++;
+        }
+
+        // Count recent updates (within 1 hour)
+        if (location.timestamp) {
+          const updateTime = new Date(location.timestamp);
+          const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+          if (updateTime > hourAgo) {
+            recentCount++;
+          }
+        }
+
+        // Debug specific yachts
+        if (yacht.name?.toUpperCase().includes('KORU')) {
+          console.log(`${LOG_PREFIX} 🔍 KORU location processing:`, {
+            input: yacht.location,
+            output: location,
+            timestamp: location.timestamp,
+            isRecent: location.timestamp ? new Date(location.timestamp) > new Date(Date.now() - 60 * 60 * 1000) : false
+          });
+        }
       }
     });
 
-    console.log(
-      `${LOG_PREFIX} Generated locations for ${
-        Object.keys(locationMap).length
-      } yachts`
-    );
-    return locationMap;
-  }, [yachts]);
+    console.log(`${LOG_PREFIX} Generated locations for ${Object.keys(locationMap).length} yachts`);
+    console.log(`${LOG_PREFIX} 📊 Location breakdown: ${manualCount} manual, ${aisCount} AIS, ${recentCount} recent`);
+    console.log(`${LOG_PREFIX} 🔄 Update counter: ${updateCounter}`);
 
-  // Update map when locations change
+    return locationMap;
+  }, [yachts, updateCounter]);
+
+  // Update map when locations change with detailed logging - FIXED VERSION
   useEffect(() => {
-    if (isMapReady && Object.keys(locations).length > 0) {
+    if (isMapReady && hasInitialized && Object.keys(locations).length > 0) {
+      console.log(`${LOG_PREFIX} 🗺️ Updating map with ${Object.keys(locations).length} locations`);
+
+      // Log a few sample locations for debugging
+      const sampleKeys = Object.keys(locations).slice(0, 3);
+      sampleKeys.forEach(mmsi => {
+        const yacht = yachts.find(y => y.mmsi === mmsi);
+        console.log(`${LOG_PREFIX} 🗺️ Sample location - ${yacht?.name || mmsi}:`, locations[mmsi]);
+      });
+
       updateMap(locations);
+    } else {
+      console.log(`${LOG_PREFIX} 🗺️ Map update skipped - Ready: ${isMapReady}, Initialized: ${hasInitialized}, Locations: ${Object.keys(locations).length}`);
     }
-  }, [isMapReady, locations]);
+  }, [isMapReady, hasInitialized, locations]);
 
   const updateMap = (newLocations: LocationsMap) => {
     if (webViewRef.current) {
       try {
-        const script = `window.updateLocations(${JSON.stringify(
-          newLocations
-        )}); true;`;
+        console.log(`${LOG_PREFIX} 🗺️ Injecting JavaScript to update ${Object.keys(newLocations).length} locations`);
+        const script = `
+          console.log('🌐 Map update received:', Object.keys(${JSON.stringify(newLocations)}).length, 'locations');
+          window.updateLocations(${JSON.stringify(newLocations)}); 
+          true;
+        `;
         webViewRef.current.injectJavaScript(script);
       } catch (error) {
         console.error(`${LOG_PREFIX} Error updating map:`, error);
@@ -97,19 +192,28 @@ const MapScreen: React.FC<Props> = ({ route, yachts, onLocationUpdate }) => {
     }
   };
 
+  // FIXED: Enhanced message handler to prevent reload issues
   const handleWebViewMessage = (event: any) => {
     const messageData = event.nativeEvent.data;
 
     if (messageData === "mapReady") {
       console.log(`${LOG_PREFIX} WebView is ready`);
-      setIsMapReady(true);
+      if (!hasInitialized) {
+        setIsMapReady(true);
+        setHasInitialized(true);
+        console.log(`${LOG_PREFIX} ✅ Map initialized for first time`);
+      } else {
+        console.log(`${LOG_PREFIX} ⚠️ WebView reloaded - this should not happen!`);
+        // Don't set ready again to prevent double initialization
+      }
       return;
     }
 
     try {
       const data = JSON.parse(messageData);
       if (data.type === "yacht_selected") {
-        console.log(`${LOG_PREFIX} Yacht selected:`, data.mmsi);
+        const yacht = yachts.find(y => y.mmsi === data.mmsi);
+        console.log(`${LOG_PREFIX} Yacht selected: ${yacht?.name || data.mmsi} (${data.mmsi})`);
       }
     } catch (error) {
       console.error(`${LOG_PREFIX} Message error:`, error);
@@ -146,30 +250,35 @@ const MapScreen: React.FC<Props> = ({ route, yachts, onLocationUpdate }) => {
           }
           .yacht-icon.selected .yacht-info { opacity: 1; }
           .manual-source { color: #ffd700; font-style: italic; }
+          .recent-update { color: #00ff88; font-weight: bold; }
+          .old-update { color: #ffaa00; }
         </style>
       </head>
       <body>
         <div id="map"></div>
         <script>
+          console.log('🌐 Map HTML loaded - starting initialization');
+          
+          // Test console logging
+          console.log('🌐 TEST: WebView JavaScript is running, will have', ${yachts.length}, 'yachts');
+          
           const METERS_PER_PIXEL = {
             0: 156412, 1: 78206, 2: 39103, 3: 19551, 4: 9776, 5: 4888, 6: 2444, 7: 1222, 8: 611, 9: 305,
             10: 153, 11: 76, 12: 38, 13: 19, 14: 9.6, 15: 4.8, 16: 2.4, 17: 1.2, 18: 0.6, 19: 0.3
           };
 
           const map = L.map('map', { zoomControl: true, attributionControl: false })
-            .setView([${MAP_CONFIG.initialView.lat}, ${
-    MAP_CONFIG.initialView.lon
-  }], ${MAP_CONFIG.initialView.zoom});
+            .setView([${MAP_CONFIG.initialView.lat}, ${MAP_CONFIG.initialView.lon}], ${MAP_CONFIG.initialView.zoom});
 
-          L.tileLayer('${
-            MAP_CONFIG.tileLayer
-          }', { attribution: false }).addTo(map);
+          L.tileLayer('${MAP_CONFIG.tileLayer}', { attribution: false }).addTo(map);
 
           const markers = {};
           const yachts = ${JSON.stringify(yachts)};
           const statusCodes = ${JSON.stringify(MAP_CONFIG.statusCodes)};
           let selectedMarkers = new Set();
           const focusedMmsi = ${focusedMmsi ? `'${focusedMmsi}'` : "null"};
+
+          console.log('🌐 Map initialized with', yachts.length, 'yachts');
 
           function getIconSize(zoomLevel, yachtLength) {
             const MIN_SIZE = 8, MAX_SIZE = 150;
@@ -198,15 +307,22 @@ const MapScreen: React.FC<Props> = ({ route, yachts, onLocationUpdate }) => {
             const fontSize = getFontSize(map.getZoom());
             const iconClass = yacht.seizedBy ? 'seized' :
               yacht.yachtType.toLowerCase().includes('sail') ? 'sailing' : 'motor';
-            const isRecent = (new Date() - new Date(loc.timestamp)) < 60 * 60 * 1000;
+            
+            // Check if update is recent (within 1 hour)
+            const isRecent = loc.timestamp && (new Date() - new Date(loc.timestamp)) < 60 * 60 * 1000;
+            
+            // Format timestamp for display
+            const timestampDisplay = loc.timestamp ? new Date(loc.timestamp).toLocaleString() : 'Unknown';
+            const timestampClass = isRecent ? 'recent-update' : 'old-update';
 
             const infoHtml = \`<div class="yacht-info" style="font-size: \${fontSize}px">
               <strong>\${sanitizeHtml(yacht.name)}</strong><br>
-              \${sanitizeHtml(yacht.owner)}<br>
-              \${loc.speed.toFixed(1)} knots • \${loc.course.toFixed(1)}°<br>
-              \${loc.source === "MANUAL" ? "Last seen:" : statusCodes[loc.status] || "Unknown"}<br>
-              \${new Date(loc.timestamp).toLocaleString()}
+              \${sanitizeHtml(yacht.owner || 'Unknown Owner')}<br>
+              \${loc.speed ? loc.speed.toFixed(1) : '0'} knots • \${loc.course ? loc.course.toFixed(1) : '0'}°<br>
+              \${loc.source === "MANUAL" ? "Last seen:" : (statusCodes[loc.status] || "Unknown")}<br>
+              <span class="\${timestampClass}">\${timestampDisplay}</span>
               \${loc.source === "MANUAL" ? '<br><span class="manual-source">Manual position</span>' : ''}
+              \${isRecent ? '<br><span class="recent-update">🟢 Live</span>' : '<br><span class="old-update">🟡 Historic</span>'}
             </div>\`;
 
             return L.divIcon({
@@ -221,35 +337,80 @@ const MapScreen: React.FC<Props> = ({ route, yachts, onLocationUpdate }) => {
           }
 
           map.on('zoomend', () => {
+            console.log('🌐 Map zoom changed, updating', Object.keys(markers).length, 'markers');
             Object.entries(markers).forEach(([mmsi, marker]) => {
               const yacht = yachts.find(y => y.mmsi === mmsi);
-              if (yacht) marker.setIcon(createYachtIcon(yacht, marker.location, selectedMarkers.has(mmsi)));
+              if (yacht && marker.location) {
+                marker.setIcon(createYachtIcon(yacht, marker.location, selectedMarkers.has(mmsi)));
+              }
             });
           });
 
           map.on('click', () => {
             selectedMarkers.forEach(mmsi => {
               const marker = markers[mmsi];
-              if (marker) marker.setIcon(createYachtIcon(marker.yacht, marker.location, false));
+              if (marker && marker.yacht && marker.location) {
+                marker.setIcon(createYachtIcon(marker.yacht, marker.location, false));
+              }
             });
             selectedMarkers.clear();
           });
 
+          // ENHANCED updateLocations function with extensive debugging
           window.updateLocations = function(data) {
+            console.log('🌐 === UPDATE LOCATIONS START ===');
+            console.log('🌐 Data type:', typeof data);
+            console.log('🌐 Current markers count before update:', Object.keys(markers).length);
+            
             try {
               const locations = typeof data === 'string' ? JSON.parse(data) : data;
+              console.log('🌐 Parsed locations count:', Object.keys(locations).length);
+              console.log('🌐 First 3 location MMSIs:', Object.keys(locations).slice(0, 3));
+
+              let updatedCount = 0;
+              let newCount = 0;
+              let errorCount = 0;
 
               Object.entries(locations).forEach(([mmsi, loc]) => {
-                const yacht = yachts.find(y => y.mmsi === mmsi);
-                if (!yacht || !loc.lat || !loc.lon) return;
+                try {
+                  const yacht = yachts.find(y => y.mmsi === mmsi);
+                  if (!yacht || !loc || typeof loc.lat !== 'number' || typeof loc.lon !== 'number') {
+                    console.log('🌐 Skipping invalid location for', mmsi, 'yacht:', !!yacht, 'location valid:', !!loc);
+                    errorCount++;
+                    return;
+                  }
 
-                if (markers[mmsi]) {
-                  markers[mmsi].setLatLng([loc.lat, loc.lon]);
-                  markers[mmsi].location = loc;
-                  markers[mmsi].setIcon(createYachtIcon(yacht, loc, selectedMarkers.has(mmsi)));
-                } else {
-                  const marker = L.marker([loc.lat, loc.lon], { icon: createYachtIcon(yacht, loc, false) })
-                    .on('click', (e) => {
+                  // Validate coordinates
+                  if (Math.abs(loc.lat) > 90 || Math.abs(loc.lon) > 180) {
+                    console.warn('🌐 Invalid coordinates for', mmsi, ':', loc.lat, loc.lon);
+                    errorCount++;
+                    return;
+                  }
+
+                  // Debug specific yachts
+                  if (yacht.name && yacht.name.toUpperCase().includes('KORU')) {
+                    console.log('🌐 Processing KORU location:', {
+                      mmsi: mmsi,
+                      name: yacht.name,
+                      location: loc,
+                      hasMarker: !!markers[mmsi]
+                    });
+                  }
+
+                  if (markers[mmsi]) {
+                    // Update existing marker
+                    const existingMarker = markers[mmsi];
+                    existingMarker.setLatLng([loc.lat, loc.lon]);
+                    existingMarker.location = loc;
+                    existingMarker.setIcon(createYachtIcon(yacht, loc, selectedMarkers.has(mmsi)));
+                    updatedCount++;
+                    console.log('🌐 Updated marker for', yacht.name);
+                  } else {
+                    // Create new marker
+                    console.log('🌐 Creating new marker for', yacht.name, 'at', loc.lat, loc.lon);
+                    const newMarker = L.marker([loc.lat, loc.lon], { 
+                      icon: createYachtIcon(yacht, loc, false) 
+                    }).on('click', function(e) {
                       e.originalEvent.stopPropagation();
                       const isSelected = selectedMarkers.has(mmsi);
                       if (isSelected) {
@@ -257,45 +418,96 @@ const MapScreen: React.FC<Props> = ({ route, yachts, onLocationUpdate }) => {
                       } else {
                         selectedMarkers.add(mmsi);
                       }
-                      marker.setIcon(createYachtIcon(yacht, loc, !isSelected));
-                      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'yacht_selected', mmsi: mmsi }));
-                    }).addTo(map);
-                  marker.yacht = yacht;
-                  marker.location = loc;
-                  markers[mmsi] = marker;
+                      this.setIcon(createYachtIcon(yacht, loc, !isSelected));
+                      window.ReactNativeWebView.postMessage(JSON.stringify({ 
+                        type: 'yacht_selected', 
+                        mmsi: mmsi 
+                      }));
+                    });
+                    
+                    // Add to map BEFORE storing in markers object
+                    newMarker.addTo(map);
+                    console.log('🌐 Added marker to map for', yacht.name);
+                    
+                    // Store references
+                    newMarker.yacht = yacht;
+                    newMarker.location = loc;
+                    markers[mmsi] = newMarker;
+                    newCount++;
+                  }
+                } catch (itemError) {
+                  console.error('🌐 Error processing single yacht:', mmsi, itemError.message);
+                  errorCount++;
                 }
               });
+
+              console.log('🌐 Map update complete:', {
+                updated: updatedCount,
+                created: newCount,
+                errors: errorCount,
+                totalMarkers: Object.keys(markers).length
+              });
+
+              // Verify markers are still on map
+              let visibleCount = 0;
+              Object.entries(markers).forEach(([mmsi, marker]) => {
+                if (map.hasLayer(marker)) {
+                  visibleCount++;
+                } else {
+                  console.warn('🌐 Marker not visible on map:', marker.yacht?.name, mmsi);
+                }
+              });
+              console.log('🌐 Visible markers verification:', visibleCount, 'of', Object.keys(markers).length, 'are visible');
 
               // Focus on specific yacht if requested
               if (focusedMmsi && markers[focusedMmsi]) {
                 const marker = markers[focusedMmsi];
+                console.log('🌐 Focusing on yacht:', focusedMmsi, marker.yacht.name);
                 map.setView([marker.location.lat, marker.location.lon], 12);
                 selectedMarkers.clear();
                 selectedMarkers.add(focusedMmsi);
                 marker.setIcon(createYachtIcon(marker.yacht, marker.location, true));
               }
+
+              console.log('🌐 === UPDATE LOCATIONS END ===');
             } catch(e) {
-              console.error('Error updating locations:', e);
+              console.error('🌐 CRITICAL ERROR in updateLocations:', e.message);
+              console.error('🌐 Error stack:', e.stack);
             }
           };
 
+          // Test timer to verify console is working
+          setTimeout(() => {
+            console.log('🌐 TEST: 5 second timer - markers object has:', Object.keys(markers).length, 'markers');
+          }, 5000);
+
+          console.log('🌐 Sending mapReady message');
           window.ReactNativeWebView.postMessage('mapReady');
         </script>
       </body>
     </html>
   `;
+  const memoizedHTML = useMemo(() => getMapHTML(), [yachts.length, focusedMmsi]);
 
   return (
     <View style={styles.container}>
-      <WebSocketHandler yachts={yachts} onLocationUpdate={onLocationUpdate} />
+      <WebSocketHandler yachts={yachts} onLocationUpdate={enhancedLocationUpdate} />
       <WebView
         ref={webViewRef}
-        source={{ html: getMapHTML() }}
+        source={{ html: memoizedHTML }}
         style={[styles.map, !isMapReady && styles.hidden]}
         onMessage={handleWebViewMessage}
+        cacheEnabled={false}
+        domStorageEnabled={false}
+        javaScriptEnabled={true}
+        onShouldStartLoadWithRequest={() => true}
         onError={(error) =>
           console.warn(`${LOG_PREFIX} WebView error:`, error.nativeEvent)
         }
+        onConsoleMessage={(event) => {
+          const message = event.nativeEvent.message;
+          console.log(`${message}`);
+        }}
       />
       {!isMapReady && (
         <View style={styles.loadingContainer}>

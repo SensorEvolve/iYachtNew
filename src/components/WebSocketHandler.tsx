@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, AppStateStatus } from "react-native";
 import { Yacht } from "../types/yacht";
 
-// Use exact API key like Python
-const API_KEY = process.env.EXPO_PUBLIC_AISSTREAM_API_KEY;
+// Your AISStream API key
+const API_KEY = "a8437deb4bfa21aa490de22b93bee19dcbb76540";
+
 interface Position {
   lat: number;
   lon: number;
@@ -20,332 +21,364 @@ interface Props {
 
 const LOG_PREFIX = "🔌 [WebSocket]";
 
-class ConnectionManager {
+class StableConnectionManager {
   private ws: WebSocket | null = null;
   private reconnectTimeout?: NodeJS.Timeout;
+  private heartbeatInterval?: NodeJS.Timeout;
   private currentRetry = 0;
-  private baseDelay = 1;
-  private maxDelay = 30;
-  private isRunning = true;
-  private subscriptionSent = false;
+  private maxRetries = 10;
+  private isConnecting = false;
+  private hasSubscribed = false;
+  private subscriptionData: any = null;
+  private lastSubscriptionTime = 0;
+  private readonly minSubscriptionInterval = 10000; // 10 seconds minimum between subscriptions
 
   constructor(
-    private readonly onMessage: (event: any) => void,
+    private readonly onMessage: (event: MessageEvent) => void,
     private readonly onConnect: () => void
-  ) {}
+  ) { }
 
-  public async connect() {
-    if (!this.isRunning) return;
+  public connect() {
+    if (this.isConnecting || (this.ws && this.ws.readyState === WebSocket.OPEN)) {
+      return;
+    }
 
-    this.subscriptionSent = false;
+    this.isConnecting = true;
+    console.log(`${LOG_PREFIX} Connecting (attempt ${this.currentRetry + 1})`);
 
     try {
-      console.log(
-        `${LOG_PREFIX} Connecting (attempt ${this.currentRetry + 1})`
-      );
-
       this.ws = new WebSocket("wss://stream.aisstream.io/v0/stream");
 
       this.ws.onopen = () => {
-        console.log(
-          `${LOG_PREFIX} ✅ Connected - sending subscription immediately`
-        );
+        console.log(`${LOG_PREFIX} ✅ Connected successfully`);
+        this.isConnecting = false;
         this.currentRetry = 0;
+        this.hasSubscribed = false;
 
-        // CRITICAL: Send subscription within 3 seconds per AIS Stream docs
-        setTimeout(() => {
-          if (!this.subscriptionSent) {
-            this.onConnect();
-          }
-        }, 100); // Send subscription after 100ms
+        // Start heartbeat to keep connection alive
+        this.startHeartbeat();
+
+        // Trigger subscription
+        this.onConnect();
       };
 
-      this.ws.onmessage = this.onMessage;
+      this.ws.onmessage = (event) => {
+        // Reset heartbeat on any message
+        this.resetHeartbeat();
+
+        try {
+          console.log(`${LOG_PREFIX} 📨 Raw message received:`, typeof event.data, event.data.length || 'no length');
+
+          let messageData;
+          if (typeof event.data === 'string') {
+            messageData = JSON.parse(event.data);
+          } else if (event.data instanceof ArrayBuffer) {
+            const text = new TextDecoder().decode(event.data);
+            messageData = JSON.parse(text);
+          } else {
+            messageData = event.data;
+          }
+
+          console.log(`${LOG_PREFIX} 📨 Parsed message:`, JSON.stringify(messageData, null, 2));
+
+          // Check if this is a subscription confirmation
+          if (messageData.Message === "Subscription successful") {
+            console.log(`${LOG_PREFIX} ✅ Subscription confirmed by server`);
+            this.hasSubscribed = true;
+            return;
+          }
+
+          // Check for error messages
+          if (messageData.Error || messageData.error) {
+            console.error(`${LOG_PREFIX} ❌ Server error:`, messageData.Error || messageData.error);
+            return;
+          }
+
+          // Process AIS data
+          this.onMessage(event);
+        } catch (error) {
+          console.error(`${LOG_PREFIX} ❌ Message processing error:`, error);
+        }
+      };
 
       this.ws.onerror = (error) => {
-        console.error(`${LOG_PREFIX} Connection error:`, error);
+        console.error(`${LOG_PREFIX} ❌ WebSocket error:`, error);
+        this.isConnecting = false;
       };
 
       this.ws.onclose = (event) => {
-        console.log(`${LOG_PREFIX} Connection closed (code: ${event.code})`);
-        this.subscriptionSent = false;
+        console.log(`${LOG_PREFIX} Connection closed (code: ${event.code}, reason: ${event.reason})`);
+        this.isConnecting = false;
+        this.hasSubscribed = false;
+        this.stopHeartbeat();
 
-        if (this.isRunning) {
-          this.currentRetry++;
-          const delay =
-            Math.min(
-              this.baseDelay * Math.pow(2, Math.min(this.currentRetry, 4)),
-              this.maxDelay
-            ) * 1000;
-
-          console.log(`${LOG_PREFIX} Reconnecting in ${delay / 1000}s...`);
-
-          this.reconnectTimeout = setTimeout(() => {
-            if (this.isRunning) {
-              this.connect();
-            }
-          }, delay);
+        // Don't reconnect if it was a clean close or max retries reached
+        if (event.code === 1000 || this.currentRetry >= this.maxRetries) {
+          console.log(`${LOG_PREFIX} Not reconnecting (clean close or max retries)`);
+          return;
         }
+
+        // Exponential backoff with jitter
+        const delay = Math.min(1000 * Math.pow(2, this.currentRetry) + Math.random() * 1000, 30000);
+        this.currentRetry++;
+
+        console.log(`${LOG_PREFIX} Reconnecting in ${Math.round(delay / 1000)}s...`);
+        this.reconnectTimeout = setTimeout(() => this.connect(), delay);
       };
+
     } catch (error) {
-      console.error(`${LOG_PREFIX} Connection error:`, error);
-      if (this.isRunning) {
-        this.scheduleReconnect();
-      }
+      console.error(`${LOG_PREFIX} ❌ Connection creation failed:`, error);
+      this.isConnecting = false;
     }
   }
 
-  private scheduleReconnect() {
-    this.currentRetry++;
-    const delay =
-      Math.min(
-        this.baseDelay * Math.pow(2, Math.min(this.currentRetry, 4)),
-        this.maxDelay
-      ) * 1000;
-
-    this.reconnectTimeout = setTimeout(() => {
-      if (this.isRunning) {
-        this.connect();
+  private startHeartbeat() {
+    this.heartbeatInterval = setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        // Send a ping to keep connection alive
+        try {
+          this.ws.send(JSON.stringify({ type: "ping" }));
+        } catch (error) {
+          console.error(`${LOG_PREFIX} Heartbeat failed:`, error);
+        }
       }
-    }, delay);
+    }, 30000); // Ping every 30 seconds
   }
 
-  public send(data: any): boolean {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      try {
-        this.ws.send(JSON.stringify(data));
-        this.subscriptionSent = true;
-        return true;
-      } catch (error) {
-        console.error(`${LOG_PREFIX} Send error:`, error);
-        return false;
-      }
+  private resetHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.startHeartbeat();
     }
-    return false;
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = undefined;
+    }
+  }
+
+  public subscribe(subscriptionData: any) {
+    this.subscriptionData = subscriptionData;
+
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.log(`${LOG_PREFIX} ⏳ Queuing subscription (connection not ready)`);
+      return false;
+    }
+
+    // Rate limiting check
+    const now = Date.now();
+    if (now - this.lastSubscriptionTime < this.minSubscriptionInterval) {
+      const waitTime = this.minSubscriptionInterval - (now - this.lastSubscriptionTime);
+      console.log(`${LOG_PREFIX} ⏳ Rate limited - waiting ${Math.round(waitTime / 1000)}s before subscription`);
+
+      setTimeout(() => {
+        this.subscribe(subscriptionData);
+      }, waitTime);
+      return false;
+    }
+
+    try {
+      console.log(`${LOG_PREFIX} 📡 Sending subscription for ${subscriptionData.FiltersShipMMSI.length} vessels`);
+
+      this.ws.send(JSON.stringify(subscriptionData));
+      this.lastSubscriptionTime = now;
+      console.log(`${LOG_PREFIX} ✅ Subscription sent successfully`);
+      return true;
+    } catch (error) {
+      console.error(`${LOG_PREFIX} ❌ Subscription failed:`, error);
+      return false;
+    }
   }
 
   public cleanup() {
-    this.isRunning = false;
-
+    this.stopHeartbeat();
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = undefined;
     }
-
     if (this.ws) {
-      this.ws.close();
+      this.ws.close(1000, "Component unmounting");
       this.ws = null;
     }
+    this.isConnecting = false;
+    this.hasSubscribed = false;
+  }
+
+  public getConnectionState() {
+    return {
+      connected: this.ws?.readyState === WebSocket.OPEN,
+      subscribed: this.hasSubscribed,
+      retryCount: this.currentRetry
+    };
   }
 }
 
 const WebSocketHandler: React.FC<Props> = ({ yachts, onLocationUpdate }) => {
-  const connectionManager = useRef<ConnectionManager | null>(null);
+  const connectionManager = useRef<StableConnectionManager | null>(null);
   const appState = useRef(AppState.currentState);
-  const vesselsStatus = useRef<{ [mmsi: string]: any }>({});
-  const messageCounts = useRef<{ [mmsi: string]: number }>({});
+  const yachtsRef = useRef(yachts);
 
-  // Load vessels with 50 MMSI limit per AIS Stream docs
-  const trackedVessels = useMemo(() => {
-    const vessels: { [key: string]: string } = {};
-
-    yachts.forEach((yacht, index) => {
-      const mmsi = yacht.mmsi;
-      const name = yacht.name;
-
-      // LIMIT TO 50 VESSELS per AIS Stream documentation
-      if (
-        index < 50 &&
-        mmsi &&
-        mmsi.trim() !== "" &&
-        mmsi.toLowerCase() !== "none" &&
-        name
-      ) {
-        vessels[mmsi] = name;
-        messageCounts.current[mmsi] = 0;
-        console.log(
-          `${LOG_PREFIX} Added vessel ${index + 1}/50: ${name} (MMSI: ${mmsi})`
-        );
-      }
-    });
-
-    console.log(
-      `${LOG_PREFIX} ✅ Loaded ${
-        Object.keys(vessels).length
-      }/50 vessels (AIS Stream limit)`
-    );
-    return vessels;
+  // Update yachts ref when prop changes
+  useEffect(() => {
+    yachtsRef.current = yachts;
   }, [yachts]);
 
-  // Subscribe with proper formatting per AIS Stream docs
-  const subscribe = useCallback(async () => {
-    if (!connectionManager.current) return;
+  // Get tracked vessels (rotate through all yachts in batches of 50)
+  const trackedVessels = useMemo(() => {
+    const validYachts = yachtsRef.current
+      .filter((yacht) => {
+        const mmsi = yacht.mmsi?.toString().trim();
+        return mmsi && /^\d{7,9}$/.test(mmsi);
+      });
 
-    const mmsiArray = Object.keys(trackedVessels);
+    console.log(`${LOG_PREFIX} 📊 Total valid yachts: ${validYachts.length}`);
+    return validYachts.map(yacht => yacht.mmsi.toString());
+  }, [yachtsRef.current]);
 
-    // Use exact subscription format from AIS Stream documentation
-    const subscribeMessage = {
-      APIKey: API_KEY,
-      BoundingBoxes: [
-        [
-          [-90, -180],
-          [90, 180],
-        ],
-      ], // Global coverage like your Python
-      FiltersShipMMSI: mmsiArray, // Maximum 50 MMSIs
-      FilterMessageTypes: ["PositionReport", "StandardClassBPositionReport"],
+  // Batch rotation state
+  const [currentBatch, setCurrentBatch] = useState(0);
+  const batchSize = 50;
+  const totalBatches = Math.ceil(trackedVessels.length / batchSize);
+
+  // Get current batch of vessels
+  const currentVessels = useMemo(() => {
+    const startIndex = currentBatch * batchSize;
+    const batch = trackedVessels.slice(startIndex, startIndex + batchSize);
+    console.log(`${LOG_PREFIX} 🔄 Batch ${currentBatch + 1}/${totalBatches} (${batch.length} vessels)`);
+    return batch;
+  }, [trackedVessels, currentBatch, batchSize, totalBatches]);
+
+  // Handle incoming WebSocket messages
+  const handleMessage = useCallback((event: MessageEvent) => {
+    try {
+      let data;
+      if (typeof event.data === 'string') {
+        data = JSON.parse(event.data);
+      } else if (event.data instanceof ArrayBuffer) {
+        const text = new TextDecoder().decode(event.data);
+        data = JSON.parse(text);
+      } else {
+        data = event.data;
+      }
+
+      // Process AIS position reports
+      if (data.MessageType === "PositionReport" && data.Message?.PositionReport?.UserID) {
+        const positionReport = data.Message.PositionReport;
+        const mmsi = positionReport.UserID.toString();
+        const lat = positionReport.Latitude;
+        const lon = positionReport.Longitude;
+        const speed = positionReport.Sog || 0;
+        const course = positionReport.Cog || 0;
+
+        if (lat && lon && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+          const position: Position = {
+            lat,
+            lon,
+            speed,
+            course,
+            status: positionReport.NavigationalStatus,
+            timestamp: new Date().toISOString(),
+          };
+
+          console.log(`${LOG_PREFIX} 🛥️ Live update: MMSI ${mmsi} → ${lat.toFixed(4)}°, ${lon.toFixed(4)}° (${speed} kts)`);
+
+          // Find yacht name for better logging
+          const yacht = yachtsRef.current.find(y => y.mmsi === mmsi);
+          const yachtName = yacht?.name || 'Unknown';
+          console.log(`${LOG_PREFIX} 🛥️ Processing update for ${yachtName} (${mmsi})`);
+
+          onLocationUpdate(mmsi, position);
+        } else {
+          console.log(`${LOG_PREFIX} ⚠️ Invalid coordinates for MMSI ${mmsi}: ${lat}, ${lon}`);
+        }
+      }
+    } catch (error) {
+      console.error(`${LOG_PREFIX} ❌ Message parsing error:`, error);
+    }
+  }, [onLocationUpdate]);
+
+  // Send subscription when connected
+  const sendSubscription = useCallback(() => {
+    if (!connectionManager.current || currentVessels.length === 0) {
+      return;
+    }
+
+    // FIXED: Use exact format from AISStream documentation
+    const subscription = {
+      Apikey: API_KEY, // NOTE: lowercase 'k' as per documentation!
+      BoundingBoxes: [[[-90, -180], [90, 180]]], // Global coverage
+      FiltersShipMMSI: currentVessels, // Current batch of vessels
+      FilterMessageTypes: ["PositionReport"],
     };
 
-    console.log(
-      `${LOG_PREFIX} 📡 Subscription (${mmsiArray.length}/50 vessels):`
-    );
-    console.log(
-      `${LOG_PREFIX} First 5 MMSIs: ${mmsiArray.slice(0, 5).join(", ")}`
-    );
-
-    const success = connectionManager.current.send(subscribeMessage);
+    const success = connectionManager.current.subscribe(subscription);
     if (success) {
-      console.log(`${LOG_PREFIX} ✅ Subscription sent within 3-second limit`);
-    } else {
-      console.error(`${LOG_PREFIX} ❌ Failed to send subscription`);
+      console.log(`${LOG_PREFIX} 📡 Batch ${currentBatch + 1}/${totalBatches} (${currentVessels.length} vessels)`);
+      console.log(`${LOG_PREFIX} First 5 MMSIs: ${currentVessels.slice(0, 5).join(', ')}`);
     }
-  }, [trackedVessels]);
-
-  // Process message exactly like Python
-  const processMessage = useCallback(
-    async (data: any) => {
-      try {
-        const msgType = data.MessageType;
-        if (
-          !["PositionReport", "StandardClassBPositionReport"].includes(msgType)
-        ) {
-          return;
-        }
-
-        const meta = data.MetaData || {};
-        const mmsi = String(meta.MMSI || "");
-
-        if (mmsi && trackedVessels[mmsi]) {
-          messageCounts.current[mmsi] = (messageCounts.current[mmsi] || 0) + 1;
-        }
-
-        if (!mmsi || !trackedVessels[mmsi]) {
-          return;
-        }
-
-        const positionData = data.Message?.[msgType] || {};
-        const lat = positionData.Latitude;
-        const lon = positionData.Longitude;
-
-        if (!lat || !lon) {
-          return;
-        }
-
-        const speed = positionData.Sog || 0;
-        const course = positionData.Cog || 0;
-        const status = positionData.NavigationalStatus || 15;
-        const timestamp = meta.time_utc || new Date().toISOString();
-
-        vesselsStatus.current[mmsi] = {
-          last_position: { lat, lon },
-          speed,
-          course,
-          status,
-          last_update: timestamp,
-        };
-
-        const statusDesc: { [key: number]: string } = {
-          0: "Under way using engine",
-          1: "At anchor",
-          2: "Not under command",
-          3: "Restricted maneuverability",
-          4: "Constrained by draught",
-          5: "Moored",
-          6: "Aground",
-          7: "Engaged in fishing",
-          8: "Under way sailing",
-          15: "Undefined",
-        };
-
-        console.log(`
-╔═══════════════ VESSEL UPDATE ════════════════╗
-║ 🚢 ${trackedVessels[mmsi]}
-║ 🔍 MMSI: ${mmsi}
-║ 📍 Position: ${lat.toFixed(4)}°N, ${lon.toFixed(4)}°E
-║ ⚡ Speed: ${speed} knots
-║ 🧭 Course: ${course}°
-║ 🚩 Status: ${statusDesc[status] || "Unknown"}
-║ 📊 Updates received: ${messageCounts.current[mmsi]}
-║ ⏰ ${timestamp}
-╚══════════════════════════════════════════════╝`);
-
-        const position: Position = {
-          lat,
-          lon,
-          speed,
-          course,
-          status,
-          timestamp,
-        };
-
-        onLocationUpdate(mmsi, position);
-      } catch (error) {
-        console.log(`${LOG_PREFIX} ⚠️ Error processing vessel data:`, error);
-      }
-    },
-    [trackedVessels, onLocationUpdate]
-  );
-
-  // Handle message exactly like Python
-  const handleMessage = useCallback(
-    (event: any) => {
-      try {
-        const data = JSON.parse(event.data);
-        processMessage(data);
-      } catch (error) {
-        // Silently continue like Python
-      }
-    },
-    [processMessage]
-  );
+  }, [currentVessels, currentBatch, totalBatches]);
 
   // Handle app state changes
   const handleAppStateChange = useCallback((nextAppState: AppStateStatus) => {
     if (
       appState.current.match(/inactive|background/) &&
-      nextAppState === "active"
+      nextAppState === 'active' &&
+      connectionManager.current
     ) {
-      connectionManager.current?.connect();
+      console.log(`${LOG_PREFIX} App became active - reconnecting`);
+      connectionManager.current.connect();
     }
     appState.current = nextAppState;
   }, []);
 
-  // Start exactly like Python but respecting AIS Stream limits
+  // Initialize WebSocket connection and batch rotation
   useEffect(() => {
-    console.log(
-      `${LOG_PREFIX} 🚢 Global Vessel Tracker (Limited to 50 vessels)`
-    );
-    console.log(
-      `${LOG_PREFIX} 🌍 Tracking ${
-        Object.keys(trackedVessels).length
-      } vessels (AIS Stream limit: 50)`
-    );
+    console.log(`${LOG_PREFIX} 🌍 Tracking ${trackedVessels.length} vessels total`);
+    console.log(`${LOG_PREFIX} 🔄 Will rotate through ${totalBatches} batches`);
 
-    connectionManager.current = new ConnectionManager(handleMessage, subscribe);
+    connectionManager.current = new StableConnectionManager(
+      handleMessage,
+      sendSubscription
+    );
 
     connectionManager.current.connect();
 
-    const appStateSubscription = AppState.addEventListener(
-      "change",
-      handleAppStateChange
-    );
+    const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
 
     return () => {
-      console.log(`${LOG_PREFIX} 👋 Shutting down gracefully...`);
       connectionManager.current?.cleanup();
       appStateSubscription.remove();
     };
-  }, [handleMessage, subscribe, handleAppStateChange, trackedVessels]);
+  }, [handleMessage, sendSubscription, handleAppStateChange]);
+
+  // Rotate batches every 5 minutes
+  useEffect(() => {
+    if (totalBatches <= 1) return;
+
+    const rotationInterval = setInterval(() => {
+      setCurrentBatch((prev) => {
+        const nextBatch = (prev + 1) % totalBatches;
+        console.log(`${LOG_PREFIX} 🔄 Rotating to batch ${nextBatch + 1}/${totalBatches}`);
+        return nextBatch;
+      });
+    }, 5 * 60 * 1000); // 5 minutes
+
+    return () => clearInterval(rotationInterval);
+  }, [totalBatches]);
+
+  // Reconnect when batch changes (with proper rate limiting)
+  useEffect(() => {
+    if (connectionManager.current && currentVessels.length > 0) {
+      // Don't send subscription immediately on batch change
+      // The connection manager will handle rate limiting
+      console.log(`${LOG_PREFIX} 🔄 Batch changed - updating subscription`);
+
+      setTimeout(() => {
+        sendSubscription();
+      }, 2000); // 2 second delay to avoid rapid-fire subscriptions
+    }
+  }, [currentBatch, sendSubscription]);
 
   return null;
 };
