@@ -3,8 +3,7 @@ import { AppState, AppStateStatus } from "react-native";
 import { Yacht } from "../types/yacht";
 
 // Use exact API key like Python
-const API_KEY = "a8437deb4bfa21aa490de22b93bee19dcbb76540";
-
+const API_KEY = process.env.EXPO_PUBLIC_AISSTREAM_API_KEY;
 interface Position {
   lat: number;
   lon: number;
